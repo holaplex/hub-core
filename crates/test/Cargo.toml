@@ -1,0 +1,16 @@
+[package]
+name = "holaplex-hub-test"
+version = "0.1.0"
+authors = [
+  "Holaplex <engineering@holaplex.com>",
+]
+edition = "2021"
+publish = false
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+
+[dependencies.core]
+package = "holaplex-hub-core"
+path = "../core"
+features = ["rt", "kafka"]
