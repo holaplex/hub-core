@@ -9,7 +9,7 @@
 
 use core::clap;
 
-#[derive(clap::Args)]
+#[derive(Debug, clap::Args)]
 struct Args;
 
 fn main() {

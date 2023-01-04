@@ -11,6 +11,7 @@
 
 pub extern crate anyhow;
 pub extern crate clap;
+pub extern crate futures_util;
 #[cfg(feature = "rt")]
 pub extern crate tokio;
 
@@ -18,18 +19,39 @@ pub use runtime::*;
 
 /// Common utilities for all crates
 pub mod prelude {
-    pub use anyhow::{Context, Error};
+    pub use std::{
+        borrow::{
+            Borrow, Cow,
+            Cow::{Borrowed, Owned},
+        },
+        future::Future,
+        sync::Arc,
+    };
+
+    pub use anyhow::{anyhow, bail, ensure, Context as _, Error};
+    pub use async_trait::async_trait;
+    pub use futures_util::{FutureExt, StreamExt, TryFutureExt};
+    pub use tracing::{
+        debug, debug_span, error, error_span, info, info_span, instrument, trace, trace_span, warn,
+        warn_span,
+    };
+    pub use tracing_subscriber::prelude::*;
 
     /// Result helper that defaults to [`anyhow::Error`]
     pub type Result<T, E = Error> = std::result::Result<T, E>;
 }
 
 mod runtime {
-    use std::path::{Path, PathBuf};
+    use std::{
+        fmt,
+        path::{Path, PathBuf},
+    };
+
+    use tracing_subscriber::EnvFilter;
 
     use crate::prelude::*;
 
-    #[derive(Debug, clap::Parser)]
+    #[derive(Debug, clap::Args)]
     struct CommonArgs<T: clap::Args> {
         /// The capacity of the async thread pool
         #[cfg(feature = "rt")]
@@ -49,8 +71,8 @@ mod runtime {
     #[repr(transparent)]
     struct DebugShim<T>(T);
 
-    impl<T> std::fmt::Debug for DebugShim<T> {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    impl<T> fmt::Debug for DebugShim<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.debug_struct(std::any::type_name::<T>())
                 .finish_non_exhaustive()
         }
@@ -71,7 +93,8 @@ mod runtime {
     }
 
     impl Common {
-        fn new<T: clap::Args>(args: CommonArgs<T>) -> Result<(Self, T)> {
+        #[instrument(name = "init_runtime")]
+        fn new<T: fmt::Debug + clap::Args>(args: CommonArgs<T>) -> Result<(Self, T)> {
             let CommonArgs {
                 #[cfg(feature = "rt")]
                 jobs,
@@ -132,12 +155,12 @@ mod runtime {
 
             Ok((
                 Self {
+                    #[cfg(feature = "rt")]
+                    rt,
                     #[cfg(feature = "kafka")]
                     producer,
                     #[cfg(feature = "kafka")]
                     consumer,
-                    #[cfg(feature = "rt")]
-                    rt,
                 },
                 extra,
             ))
@@ -158,8 +181,19 @@ mod runtime {
         }
     }
 
+    #[derive(Debug, clap::Parser)]
+    struct Opts<T: fmt::Debug + clap::Args> {
+        /// The log filter, using env_logger-like syntax
+        #[arg(long, env = "RUST_LOG")]
+        log_filter: Option<String>,
+
+        #[command(flatten)]
+        common: CommonArgs<T>,
+    }
+
     /// Perform environment setup and run the requested entrypoint
-    pub fn run<T: clap::Args>(main: impl FnOnce(Common, T) -> Result<(), ()>) {
+    #[instrument(skip(main))]
+    pub fn run<T: fmt::Debug + clap::Args>(main: impl FnOnce(Common, T) -> Result<(), ()>) {
         [
             ".env.local",
             if cfg!(debug_assertions) {
@@ -177,19 +211,34 @@ mod runtime {
         })
         .expect("Failed to load .env files");
 
-        env_logger::builder()
-            .filter_level(if cfg!(debug_assertions) {
-                log::LevelFilter::Debug
-            } else {
-                log::LevelFilter::Warn
-            })
-            .parse_default_env()
-            .init();
+        let Opts { log_filter, common } = clap::Parser::parse();
 
-        let (common, extra) = match Common::new(clap::Parser::parse()) {
+        let log_filter = log_filter.map_or_else(
+            || {
+                Borrowed(if cfg!(debug_assertions) {
+                    "debug"
+                } else {
+                    "info"
+                })
+            },
+            Owned,
+        );
+
+        tracing_log::LogTracer::init().expect("Failed to initialize LogTracer");
+        tracing::subscriber::set_global_default(
+            tracing_subscriber::Registry::default()
+                .with(EnvFilter::try_new(&log_filter).unwrap_or_else(|e| {
+                    eprintln!("Invalid log filter {log_filter:?}: {e}");
+                    std::process::exit(1);
+                }))
+                .with(tracing_subscriber::fmt::layer()),
+        )
+        .expect("Failed to set default tracing subscriber");
+
+        let (common, extra) = match Common::new(common) {
             Ok(t) => t,
             Err(e) => {
-                log::error!("Failed to initialize runtime: {e:?}");
+                error!("Failed to initialize runtime: {e:?}");
                 std::process::exit(-1);
             },
         };
@@ -197,7 +246,7 @@ mod runtime {
         std::process::exit(match main(common, extra) {
             Ok(()) => 0,
             Err(e) => {
-                log::error!("{e:?}");
+                error!("{e:?}");
                 1
             },
         });
