@@ -13,4 +13,4 @@ license = "AGPL-3.0-or-later"
 [dependencies.core]
 package = "holaplex-hub-core"
 path = "../core"
-features = ["rt", "kafka"]
+features = ["kafka"]
