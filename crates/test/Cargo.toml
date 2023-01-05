@@ -8,9 +8,16 @@ edition = "2021"
 publish = false
 license = "AGPL-3.0-or-later"
 
-[dependencies]
+build = "build.rs"
 
-[dependencies.core]
+[dependencies]
+prost = "0.11.5"
+
+[dependencies.hub-core]
 package = "holaplex-hub-core"
 path = "../core"
 features = ["kafka"]
+
+[build-dependencies.hub-core-build]
+package = "holaplex-hub-core-build"
+path = "../core-build"

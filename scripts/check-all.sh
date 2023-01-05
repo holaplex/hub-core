@@ -46,6 +46,19 @@ for pkg in $(jq -r '.packages | keys | join("\n")' <<<"$json"); do
     types="$(jq -r '.crate_types | join("/")' <<<"$tj")"
     src="$(jq -r '.src_path' <<<"$tj")"
 
+    # Not sure why lib is like that but I don't make the rules
+    case "$kinds" in
+      bin) kind=bin ;;
+      custom-build) continue ;;
+      "$types") kind=lib ;;
+      *) kind="$kinds"
+    esac
+
+    [[ -t 1 ]] && echo -n $'\x1b[1m'
+    echo "==> $name ($kind)"
+    [[ -t 1 ]] && echo -n $'\x1b[m'
+
+    # Check lints
     i=0
     for re in "${lint_res[@]}"; do
       if ! grep -Pzq "$re" "$src"; then
@@ -55,17 +68,6 @@ for pkg in $(jq -r '.packages | keys | join("\n")' <<<"$json"); do
       fi
       i="$(( i + 1 ))"
     done
-
-    # Not sure why lib is like that but I don't make the rules
-    case "$kinds" in
-      bin) kind=bin ;;
-      "$types") kind=lib ;;
-      *) kind="$kinds"
-    esac
-
-    [[ -t 1 ]] && echo -n $'\x1b[1m'
-    echo "==> $name ($kind)"
-    [[ -t 1 ]] && echo -n $'\x1b[m'
 
     case "$kind" in
       */*|*lib|proc-macro) flags=(--lib) ;;

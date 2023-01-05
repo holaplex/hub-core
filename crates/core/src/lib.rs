@@ -13,6 +13,8 @@ pub extern crate anyhow;
 pub extern crate async_trait;
 pub extern crate clap;
 pub extern crate futures_util;
+pub extern crate prost;
+pub extern crate prost_types;
 pub extern crate tokio;
 pub extern crate tracing;
 pub extern crate url;
@@ -33,6 +35,7 @@ pub mod prelude {
     pub use anyhow::{anyhow, bail, ensure, Context as _, Error};
     pub use async_trait::async_trait;
     pub use futures_util::{FutureExt, StreamExt, TryFutureExt};
+    pub use prost::Message;
     pub use tracing::{
         self, debug, debug_span, error, error_span, info, info_span, instrument, trace, trace_span,
         warn, warn_span,
@@ -65,6 +68,21 @@ mod runtime {
         #[arg(long, env)]
         kafka_brokers: String,
 
+        /// Kafka SASL username
+        #[cfg(feature = "kafka")]
+        #[arg(long, env)]
+        kafka_username: String,
+
+        /// Kafka SASL password
+        #[cfg(feature = "kafka")]
+        #[arg(long, env)]
+        kafka_password: DebugShim<String>, // hide
+
+        /// Whether to use SSL Kafka channels
+        #[cfg(feature = "kafka")]
+        #[arg(long, env, default_value_t = true)]
+        kafka_ssl: bool,
+
         #[command(flatten)]
         extra: T,
     }
@@ -77,6 +95,12 @@ mod runtime {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.debug_struct(std::any::type_name::<T>())
                 .finish_non_exhaustive()
+        }
+    }
+
+    impl<T> From<T> for DebugShim<T> {
+        fn from(val: T) -> Self {
+            Self(val)
         }
     }
 
@@ -103,6 +127,12 @@ mod runtime {
                 jobs,
                 #[cfg(feature = "kafka")]
                 kafka_brokers,
+                #[cfg(feature = "kafka")]
+                kafka_username,
+                #[cfg(feature = "kafka")]
+                kafka_password,
+                #[cfg(feature = "kafka")]
+                kafka_ssl,
                 extra,
             } = args;
 
@@ -127,8 +157,37 @@ mod runtime {
                 use rdkafka::consumer::Consumer;
 
                 let mut config = rdkafka::ClientConfig::new();
-                config.set("bootstrap.servers", kafka_brokers);
+                config
+                    .set("bootstrap.servers", kafka_brokers)
+                    .set("sasl.mechanism", "SCRAM-SHA-512")
+                    .set("sasl.username", kafka_username)
+                    .set("sasl.password", kafka_password.0)
+                    .set(
+                        "security.protocol",
+                        if kafka_ssl {
+                            "SASL_SSL"
+                        } else {
+                            "SASL_PLAINTEXT"
+                        },
+                    );
                 let config = config; // no more mut
+
+                let admin: rdkafka::admin::AdminClient<_> = config
+                    .create()
+                    .context("Failed to create Kafka admin client")?;
+
+                admin
+                    .create_topics(
+                        &[rdkafka::admin::NewTopic {
+                            name: "hi",
+                            config: vec![],
+                            num_partitions: 1,
+                            replication: rdkafka::admin::TopicReplication::Fixed(1),
+                        }],
+                        &rdkafka::admin::AdminOptions::new(),
+                    )
+                    .await
+                    .context("Failed to create test topic")?;
 
                 let producer: rdkafka::producer::FutureProducer =
                     config.create().context("Failed to create Kafka producer")?;
