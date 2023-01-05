@@ -70,13 +70,13 @@ mod runtime {
 
         /// Kafka SASL username
         #[cfg(feature = "kafka")]
-        #[arg(long, env)]
-        kafka_username: String,
+        #[arg(long, env, requires("kafka_password"))]
+        kafka_username: Option<String>,
 
         /// Kafka SASL password
         #[cfg(feature = "kafka")]
-        #[arg(long, env)]
-        kafka_password: DebugShim<String>, // hide
+        #[arg(long, env, requires("kafka_username"))]
+        kafka_password: Option<DebugShim<String>>, // hide
 
         /// Whether to use SSL Kafka channels
         #[cfg(feature = "kafka")]
@@ -157,19 +157,27 @@ mod runtime {
                 use rdkafka::consumer::Consumer;
 
                 let mut config = rdkafka::ClientConfig::new();
-                config
-                    .set("bootstrap.servers", kafka_brokers)
-                    .set("sasl.mechanism", "SCRAM-SHA-512")
-                    .set("sasl.username", kafka_username)
-                    .set("sasl.password", kafka_password.0)
-                    .set(
+                config.set("bootstrap.servers", kafka_brokers);
+
+                if let Some((user, pass)) = kafka_username.zip(kafka_password) {
+                    config
+                        .set("sasl.mechanism", "SCRAM-SHA-512")
+                        .set("sasl.username", user)
+                        .set("sasl.password", pass.0)
+                        .set(
+                            "security.protocol",
+                            if kafka_ssl {
+                                "SASL_SSL"
+                            } else {
+                                "SASL_PLAINTEXT"
+                            },
+                        );
+                } else {
+                    config.set(
                         "security.protocol",
-                        if kafka_ssl {
-                            "SASL_SSL"
-                        } else {
-                            "SASL_PLAINTEXT"
-                        },
+                        if kafka_ssl { "SSL" } else { "PLAINTEXT" },
                     );
+                }
                 let config = config; // no more mut
 
                 let admin: rdkafka::admin::AdminClient<_> = config
