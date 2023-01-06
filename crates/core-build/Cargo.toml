@@ -12,4 +12,15 @@ keywords = ["solana", "holaplex", "web3"]
 categories = ["cryptography::cryptocurrencies", "web-programming"]
 
 [dependencies]
+anyhow = { version = "1.0.68", features = ["backtrace"] }
+dotenv = "0.15.0"
+futures-util = "0.3.25"
+hex = { version = "0.4.3", features = ["serde"] }
 prost-build = "0.11.5"
+reqwest = { version = "0.11.13", features = ["stream"] }
+serde = { version = "1.0.152", features = ["derive"] }
+sha2 = "0.10.6"
+tempfile = "3.3.0"
+tokio = { version = "1.24.0", features = ["fs", "rt", "sync"] }
+toml = { version = "0.5.10", features = ["preserve_order"] }
+url = { version = "2.3.1", features = ["serde"] }
