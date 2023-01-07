@@ -67,6 +67,7 @@ for i in "${passes[@]}"; do
       # Not sure why lib is like that but I don't make the rules
       case "$kinds" in
         bin) kind=bin ;;
+        custom-build) continue ;;
         "$types") kind=lib ;;
         *) kind="$kinds"
       esac

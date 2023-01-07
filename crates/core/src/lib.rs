@@ -13,8 +13,10 @@ pub extern crate anyhow;
 pub extern crate async_trait;
 pub extern crate clap;
 pub extern crate futures_util;
+pub extern crate hostname;
 pub extern crate prost;
 pub extern crate prost_types;
+pub extern crate thiserror;
 pub extern crate tokio;
 pub extern crate tracing;
 pub extern crate url;
@@ -29,6 +31,7 @@ pub mod prelude {
             Cow::{Borrowed, Owned},
         },
         future::Future,
+        marker::PhantomData,
         sync::Arc,
     };
 
@@ -47,6 +50,12 @@ pub mod prelude {
     pub type Result<T, E = Error> = std::result::Result<T, E>;
 }
 
+#[cfg(feature = "kafka")]
+pub mod consumer;
+#[cfg(feature = "kafka")]
+pub mod producer;
+pub mod util;
+
 mod runtime {
     use std::{
         fmt,
@@ -55,7 +64,7 @@ mod runtime {
 
     use tracing_subscriber::{layer::Layered, EnvFilter};
 
-    use crate::prelude::*;
+    use crate::{prelude::*, util::DebugShim};
 
     #[derive(Debug, clap::Args)]
     struct CommonArgs<T: clap::Args> {
@@ -87,42 +96,28 @@ mod runtime {
         extra: T,
     }
 
-    #[derive(Clone, Copy)]
-    #[repr(transparent)]
-    struct DebugShim<T>(T);
-
-    impl<T> fmt::Debug for DebugShim<T> {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.debug_struct(std::any::type_name::<T>())
-                .finish_non_exhaustive()
-        }
-    }
-
-    impl<T> From<T> for DebugShim<T> {
-        fn from(val: T) -> Self {
-            Self(val)
-        }
-    }
-
     /// Common data passed into the program entry point
     #[allow(missing_copy_implementations)]
     #[non_exhaustive]
     #[derive(Debug)]
     pub struct Common {
-        rt: tokio::runtime::Runtime,
+        pub rt: tokio::runtime::Runtime,
 
         #[cfg(feature = "kafka")]
-        producer: DebugShim<rdkafka::producer::FutureProducer>,
+        pub producer_cfg: super::producer::Config,
+
         #[cfg(feature = "kafka")]
-        consumer: DebugShim<rdkafka::consumer::StreamConsumer>,
+        pub consumer_cfg: super::consumer::Config,
     }
 
     impl Common {
         #[instrument(name = "init_runtime", skip(loki_task))]
         fn new<T: fmt::Debug + clap::Args>(
+            cfg: StartConfig,
             args: CommonArgs<T>,
             loki_task: Option<tracing_loki::BackgroundTask>,
         ) -> Result<(Self, T)> {
+            let StartConfig { service_name } = cfg;
             let CommonArgs {
                 jobs,
                 #[cfg(feature = "kafka")]
@@ -153,11 +148,20 @@ mod runtime {
             }
 
             #[cfg(feature = "kafka")]
-            let (producer, consumer) = rt.block_on(async {
-                use rdkafka::consumer::Consumer;
+            let (producer_cfg, consumer_cfg) = {
+                use rdkafka::config::RDKafkaLogLevel;
+                use tracing::level_filters::LevelFilter;
 
                 let mut config = rdkafka::ClientConfig::new();
-                config.set("bootstrap.servers", kafka_brokers);
+                config
+                    .set("bootstrap.servers", kafka_brokers)
+                    .set_log_level(match LevelFilter::current() {
+                        LevelFilter::OFF => RDKafkaLogLevel::Critical,
+                        LevelFilter::ERROR => RDKafkaLogLevel::Error,
+                        LevelFilter::WARN => RDKafkaLogLevel::Notice,
+                        LevelFilter::INFO => RDKafkaLogLevel::Info,
+                        LevelFilter::DEBUG | LevelFilter::TRACE => RDKafkaLogLevel::Debug,
+                    });
 
                 if let Some((user, pass)) = kafka_username.zip(kafka_password) {
                     config
@@ -180,69 +184,29 @@ mod runtime {
                 }
                 let config = config; // no more mut
 
-                let admin: rdkafka::admin::AdminClient<_> = config
-                    .create()
-                    .context("Failed to create Kafka admin client")?;
+                let producer_cfg = super::producer::Config {
+                    service_name: service_name.into(),
+                    config: DebugShim(config.clone()),
+                };
 
-                admin
-                    .create_topics(
-                        &[rdkafka::admin::NewTopic {
-                            name: "hi",
-                            config: vec![],
-                            num_partitions: 1,
-                            replication: rdkafka::admin::TopicReplication::Fixed(1),
-                        }],
-                        &rdkafka::admin::AdminOptions::new(),
-                    )
-                    .await
-                    .context("Failed to create test topic")?;
+                let consumer_cfg = super::consumer::Config {
+                    service_name: service_name.into(),
+                    config: DebugShim(config),
+                };
 
-                let producer: rdkafka::producer::FutureProducer =
-                    config.create().context("Failed to create Kafka producer")?;
-                let consumer: rdkafka::consumer::StreamConsumer = config
-                    .clone()
-                    .set("group.id", "foo")
-                    .create()
-                    .context("Failed to create Kafka consumer")?;
-
-                consumer
-                    .subscribe(&["fucc"])
-                    .context("Failed to subscribe consumer to test topic")?;
-
-                producer
-                    .send(
-                        rdkafka::producer::FutureRecord {
-                            topic: "fucc",
-                            partition: None,
-                            payload: Some("fucc"),
-                            key: Some("fucc"),
-                            timestamp: None,
-                            headers: None,
-                        },
-                        None,
-                    )
-                    .await
-                    .map_err(|(e, m)| e)
-                    .context("Failed to send test message")?;
-
-                Result::<_>::Ok((DebugShim(producer), DebugShim(consumer)))
-            })?;
+                (producer_cfg, consumer_cfg)
+            };
 
             Ok((
                 Self {
                     rt,
                     #[cfg(feature = "kafka")]
-                    producer,
+                    producer_cfg,
                     #[cfg(feature = "kafka")]
-                    consumer,
+                    consumer_cfg,
                 },
                 extra,
             ))
-        }
-
-        /// Expose the Tokio async runtime
-        pub fn rt(&self) -> &tokio::runtime::Runtime {
-            &self.rt
         }
     }
 
@@ -301,8 +265,19 @@ mod runtime {
             .unwrap_or_else(|e| init_error!("Failed to set tracing subscriber: {e}"));
     }
 
+    #[derive(Debug)]
+    #[allow(missing_copy_implementations)]
+    pub struct StartConfig {
+        pub service_name: &'static str,
+    }
+
     /// Perform environment setup and run the requested entrypoint
-    pub fn run<T: fmt::Debug + clap::Args>(main: impl FnOnce(Common, T) -> Result<(), ()>) {
+    pub fn run<T: fmt::Debug + clap::Args>(
+        cfg: StartConfig,
+        main: impl FnOnce(Common, T) -> Result<()>,
+    ) {
+        let StartConfig { service_name } = cfg;
+
         // Construct a temporary logger on this thread until the full logger is ready
         let smuggled = tracing::subscriber::with_default(
             tracing_subscriber::Registry::default().with(fmt_layer()),
@@ -346,9 +321,23 @@ mod runtime {
                     Owned,
                 );
 
+                let hostname = hostname::get()
+                    .unwrap_or_else(|e| init_error!("Failed to get system hostname: {e}"))
+                    .to_string_lossy()
+                    .into_owned();
+
                 let (loki_layer, loki_task) = loki_endpoint
                     .map(|e| {
-                        tracing_loki::layer(e, [].into_iter().collect(), [].into_iter().collect())
+                        tracing_loki::layer(
+                            e,
+                            [
+                                ("host_name".into(), hostname),
+                                ("service_name".into(), service_name.into()),
+                            ]
+                            .into_iter()
+                            .collect(),
+                            [].into_iter().collect(),
+                        )
                     })
                     .transpose()
                     .unwrap_or_else(|e| init_error!("Failed to initialize Loki exporter: {e}"))
@@ -369,7 +358,7 @@ mod runtime {
         let (common, loki_task) = smuggled;
 
         error_span!("run").in_scope(|| {
-            let (common, extra) = match Common::new(common, loki_task) {
+            let (common, extra) = match Common::new(cfg, common, loki_task) {
                 Ok(t) => t,
                 Err(e) => {
                     error!("Failed to initialize runtime: {e:?}");
