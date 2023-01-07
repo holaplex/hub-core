@@ -80,7 +80,7 @@ mod runtime {
 
         /// Whether to use SSL Kafka channels
         #[cfg(feature = "kafka")]
-        #[arg(long, env, default_value_t = true)]
+        #[arg(long, env, default_value_t = false)]
         kafka_ssl: bool,
 
         #[command(flatten)]
@@ -187,7 +187,7 @@ mod runtime {
                 admin
                     .create_topics(
                         &[rdkafka::admin::NewTopic {
-                            name: "hi",
+                            name: "fucc",
                             config: vec![],
                             num_partitions: 1,
                             replication: rdkafka::admin::TopicReplication::Fixed(1),

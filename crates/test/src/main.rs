@@ -10,7 +10,7 @@
 use hub_core::{clap, prelude::*};
 
 mod proto {
-    include!(concat!(env!("OUT_DIR"), "/test.proto.rs"));
+//    include!(concat!(env!("OUT_DIR"), "/test.proto.rs"));
 }
 
 #[derive(Debug, clap::Args)]
@@ -18,12 +18,13 @@ struct Args;
 
 fn main() {
     hub_core::run(|c, Args| {
+        /*
         let test = proto::Test { x: "hi".into() };
 
         info!(test = ?test, "hello!");
 
         info!(test_encoded = ?test.encode_to_vec(), "encoded");
-
+        */
         Ok(())
     });
 }

@@ -1,0 +1,50 @@
+name: Build and push
+
+on:
+  push:
+    branches: [ mpw/ci ]
+
+jobs:
+  build:
+    name: Building and Pushing Image
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push hub-test consumer image
+        id: build-hub-test-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ github.event.repository.name }}
+
+        run: |
+          git_hash=$(git rev-parse --short "$GITHUB_SHA")
+          app=hub-test
+          image_tag="$ECR_REGISTRY/$ECR_REPOSITORY:$app-${GITHUB_REF##*/}-$git_hash"
+          docker build -t $image_tag --target $app .
+          echo "Pushing image to ECR..."
+          docker push $image_tag
+          echo "::set-output name=image::$image_tag"
