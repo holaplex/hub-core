@@ -34,7 +34,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, tag, and push hub-test consumer image
+      - name: Build, tag, and push hub-test image
         id: build-hub-test-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -48,3 +48,6 @@ jobs:
           echo "Pushing image to ECR..."
           docker push $image_tag
           echo "::set-output name=image::$image_tag"
+
+      - name: Set output
+        run: echo "image=$image_tag" >> $GITHUB_OUTPUT
