@@ -161,7 +161,7 @@ mod runtime {
 
                 if let Some((user, pass)) = kafka_username.zip(kafka_password) {
                     config
-                        .set("sasl.mechanism", "SCRAM-SHA-512")
+                        .set("sasl.mechanism", "SCRAM-SHA-256")
                         .set("sasl.username", user)
                         .set("sasl.password", pass.0)
                         .set(
