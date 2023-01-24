@@ -9,7 +9,7 @@
 )]
 #![warn(clippy::pedantic, clippy::cargo, missing_docs)]
 
-use hub_core::{clap, prelude::*};
+use hub_core::{clap, prelude::*, consumer::RecvError};
 
 mod proto {
     include!(concat!(env!("OUT_DIR"), "/test.proto.rs"));
@@ -18,33 +18,33 @@ mod proto {
 #[derive(Debug, clap::Args)]
 struct Args;
 
-#[derive(Debug)]
-struct MyMessage;
-
-impl hub_core::producer::Message for MyMessage {
-    type Key = str;
-    type Value = str;
+impl hub_core::producer::Message for proto::Test {
+    type Key = proto::Test;
 }
 
-#[derive(Debug, hub_core::thiserror::Error)]
-#[error("foo")]
-struct MyError;
-
 #[derive(Debug)]
-struct MyGroup;
+enum MyGroup {
+    Test(proto::Test, proto::Test),
+}
 
 impl hub_core::consumer::MessageGroup for MyGroup {
     const REQUESTED_TOPICS: &'static [&'static str] = &["foo-bar"];
 
-    type Error = MyError;
-
-    fn from_message<M: hub_core::consumer::Message>(msg: &M) -> Result<Self, Self::Error> {
+    fn from_message<M: hub_core::consumer::Message>(msg: &M) -> Result<Self, RecvError> {
         let topic = msg.topic();
-        let key = msg.key();
-        let val = msg.payload();
+        let key = msg.key().ok_or(RecvError::MissingKey)?;
+        let val = msg.payload().ok_or(RecvError::MissingPayload)?;
         info!(topic, ?key, ?val);
 
-        Ok(MyGroup)
+        match topic {
+            "foo-bar" => {
+                let key = proto::Test::decode(key)?;
+                let val = proto::Test::decode(val)?;
+
+                Ok(MyGroup::Test(key, val))
+            },
+            t => Err(RecvError::BadTopic(t.into())),
+        }
     }
 }
 
@@ -61,10 +61,12 @@ fn main() {
         info!(test_encoded = ?test.encode_to_vec(), "encoded");
 
         common.rt.block_on(async move {
-            let prod = common.producer_cfg.build::<MyMessage>().await?;
-            let cons = common.consumer_cfg.build(MyGroup).await?;
+            let prod = common.producer_cfg.build::<proto::Test>().await?;
+            let cons = common.consumer_cfg.build::<MyGroup>().await?;
 
-            prod.send(Some("hi"), Some("hi")).await?;
+            let test = proto::Test { x: "hi".into() };
+
+            prod.send(Some(&test), Some(&test)).await?;
 
             info!("Testing consumer");
             let msg = cons.stream().next().await;

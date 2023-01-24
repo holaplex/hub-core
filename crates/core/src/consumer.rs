@@ -6,6 +6,7 @@ pub use rdkafka::Message;
 
 use crate::{prelude::*, util::DebugShim};
 
+/// Service startup configuration for consuming Kafka records
 #[derive(Debug)]
 pub struct Config {
     pub(crate) service_name: String,
@@ -13,12 +14,19 @@ pub struct Config {
 }
 
 impl Config {
+    /// Construct a new record consumer from this config instance
+    ///
+    /// # Errors
+    /// This function returns an error if the Kafka consumer cannot be created
+    /// or if subscribing to the requested topics fails.
     #[inline]
-    pub async fn build<G: MessageGroup>(self, group: G) -> Result<Consumer<G>> {
+    pub async fn build<G: MessageGroup>(self) -> Result<Consumer<G>> {
         Consumer::new(self).await
     }
 }
 
+/// A consumer for requesting, receiving, and parsing messages from one or more
+/// Kafka topics
 #[derive(Debug)]
 pub struct Consumer<G> {
     consumer: DebugShim<StreamConsumer>,
@@ -48,6 +56,8 @@ impl<G: MessageGroup> Consumer<G> {
         })
     }
 
+    /// Open a stream to receive messages from this consumer
+    #[must_use]
     pub fn stream(&self) -> ConsumerStream<G> {
         ConsumerStream {
             stream: self.consumer.0.stream(),
@@ -57,6 +67,8 @@ impl<G: MessageGroup> Consumer<G> {
 }
 
 pin_project_lite::pin_project! {
+    /// A stream of incoming messages for a consumer, parsed according to the
+    /// type of the [`MessageGroup`] the consumer was constructed with
     pub struct ConsumerStream<'a, G> {
         #[pin]
         stream: rdkafka::consumer::MessageStream<'a>,
@@ -65,7 +77,7 @@ pin_project_lite::pin_project! {
 }
 
 impl<'a, G: MessageGroup> Stream for ConsumerStream<'a, G> {
-    type Item = Result<G, RecvError<G>>;
+    type Item = Result<G, RecvError>;
 
     #[inline]
     fn poll_next(
@@ -75,24 +87,45 @@ impl<'a, G: MessageGroup> Stream for ConsumerStream<'a, G> {
         self.project().stream.poll_next(cx).map(|o| {
             o.map(|r| {
                 r.map_err(RecvError::Kafka)
-                    .and_then(|m| G::from_message(&m).map_err(RecvError::Parse))
+                    .and_then(|m| G::from_message(&m))
             })
         })
     }
 }
 
+/// An error originating from a received Kafka record
 #[derive(Debug, thiserror::Error)]
-pub enum RecvError<G: MessageGroup> {
+pub enum RecvError {
+    /// An error occurred reading data from the wire
     #[error("Error receiving messages from Kafka: {0}")]
-    Kafka(#[source] rdkafka::error::KafkaError),
-    #[error("Error parsing received message: {0}")]
-    Parse(#[source] G::Error),
+    Kafka(#[from] rdkafka::error::KafkaError),
+    /// An error occurred parsing data from the wire
+    #[error("Error decoding Protobuf message")]
+    Protobuf(#[from] prost::DecodeError),
+    /// The topic of a message did not match one of the expected topics of the
+    /// message group
+    #[error("Unexpected topic {0:?}")]
+    BadTopic(String),
+    /// A message had no key but the message group expected one
+    #[error("Expected a message key, but did not get one")]
+    MissingKey,
+    /// A message had no payload but the message group expected one
+    #[error("Expected a message payload, but did not get one")]
+    MissingPayload,
 }
 
+/// Parsing logic for incoming messages from multiple Kafka topics
 pub trait MessageGroup: fmt::Debug + Sized {
-    type Error: std::error::Error + Send + Sync + 'static;
-
+    /// The topics this message group is interested in consuming
     const REQUESTED_TOPICS: &'static [&'static str];
 
-    fn from_message<M: Message>(msg: &M) -> Result<Self, Self::Error>;
+    /// Construct a new member of this message group from an inbound Kafka
+    /// record
+    ///
+    /// # Errors
+    /// This function should return an error if the bytes of the message cannot
+    /// be decoded according to the topic it was received from, if the topic is
+    /// not listed in [`REQUESTED_TOPICS`](Self::REQUESTED_TOPICS), or if the
+    /// message is missing required fields.
+    fn from_message<M: Message>(msg: &M) -> Result<Self, RecvError>;
 }

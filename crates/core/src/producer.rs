@@ -1,9 +1,8 @@
 use std::fmt;
 
-use rdkafka::message::ToBytes;
-
 use crate::{prelude::*, util::DebugShim};
 
+/// Service startup configuration for producing Kafka records
 #[derive(Debug)]
 pub struct Config {
     pub(crate) service_name: String,
@@ -11,12 +10,19 @@ pub struct Config {
 }
 
 impl Config {
+    /// Construct a new record producer from this config instance
+    ///
+    /// # Errors
+    /// This function returns an error if a Kafka topic with the service's name
+    /// cannot be created or a Kafka client cannot successfully be initialized.
     #[inline]
     pub async fn build<M: Message>(self) -> Result<Producer<M>> {
         Producer::new(self).await
     }
 }
 
+/// A producer for emitting messages onto the Kafka topic identified by this
+/// service's name
 #[derive(Debug)]
 pub struct Producer<M> {
     topic: String,
@@ -36,7 +42,7 @@ impl<M: Message> Producer<M> {
         admin
             .create_topics(
                 &[rdkafka::admin::NewTopic {
-                    name: "hi",
+                    name: &config.service_name,
                     config: vec![],
                     num_partitions: 1,
                     replication: rdkafka::admin::TopicReplication::Fixed(1),
@@ -59,10 +65,11 @@ impl<M: Message> Producer<M> {
         })
     }
 
+    /// Send a single record to the Kafka broker
     #[instrument(level = "debug")]
     pub async fn send(
         &self,
-        payload: Option<&M::Value>,
+        payload: Option<&M>, // TODO: don't wrap this in Option
         key: Option<&M::Key>,
     ) -> Result<(), SendError> {
         match self
@@ -72,8 +79,8 @@ impl<M: Message> Producer<M> {
                 rdkafka::producer::FutureRecord {
                     topic: &self.topic,
                     partition: None,
-                    payload,
-                    key,
+                    payload: payload.map(prost::Message::encode_to_vec).as_deref(),
+                    key: key.map(prost::Message::encode_to_vec).as_deref(),
                     timestamp: None,
                     headers: None,
                 },
@@ -92,11 +99,13 @@ impl<M: Message> Producer<M> {
     }
 }
 
+/// An error originating from an outgoing Kafka record
 #[derive(Debug, thiserror::Error)]
 #[error("Error sending message to Kafka: {0}")]
 pub struct SendError(#[source] rdkafka::error::KafkaError);
 
-pub trait Message: fmt::Debug {
-    type Key: fmt::Debug + ToBytes + ?Sized;
-    type Value: fmt::Debug + ToBytes + ?Sized;
+/// A Protobuf message payload with an associated Protobuf key
+pub trait Message: fmt::Debug + prost::Message {
+    /// The key type for this message
+    type Key: fmt::Debug + prost::Message;
 }
