@@ -23,7 +23,7 @@ impl Config {
 
 /// A producer for emitting messages onto the Kafka topic identified by this
 /// service's name
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Producer<M> {
     topic: String,
     producer: DebugShim<rdkafka::producer::FutureProducer>,
