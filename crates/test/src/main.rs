@@ -9,7 +9,7 @@
 )]
 #![warn(clippy::pedantic, clippy::cargo, missing_docs)]
 
-use hub_core::{clap, prelude::*, consumer::RecvError};
+use hub_core::{clap, consumer::RecvError, prelude::*};
 
 mod proto {
     include!(concat!(env!("OUT_DIR"), "/test.proto.rs"));
