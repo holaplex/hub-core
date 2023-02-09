@@ -46,9 +46,10 @@ impl<G: MessageGroup> Consumer<G> {
             .create()
             .context("Failed to create Kafka consumer")?;
 
+        // TODO: backoff and retry for initial boot
         consumer
-            .subscribe(&[&config.service_name])
-            .context("Failed to subscribe consumer to test topic")?;
+            .subscribe(&G::REQUESTED_TOPICS)
+            .context("Failed to subscribe consumer to requested topics")?;
 
         Ok(Self {
             consumer: DebugShim(consumer),
