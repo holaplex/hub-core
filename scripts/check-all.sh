@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 [[ -z "$CARGO" ]] && CARGO=cargo
 
-"$CARGO" fmt --all --check
+"$CARGO" +nightly fmt --all --check
 
 json="$(cargo metadata --format-version 1 --no-deps)"
 

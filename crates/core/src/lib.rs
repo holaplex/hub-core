@@ -310,7 +310,7 @@ mod runtime {
                 .unwrap_or_else(|e| init_error!("Failed to load .env files: {e:?}"));
 
                 let opts = clap::Parser::parse();
-                std::mem::drop(span);
+                drop(span);
                 let span = error_span!("boot", ?opts).entered();
                 let Opts {
                     log_filter,
@@ -357,7 +357,7 @@ mod runtime {
                     init_subscriber(log_filter, |r| r);
                 }
 
-                std::mem::drop(span);
+                drop(span);
 
                 (common, loki_task)
             },

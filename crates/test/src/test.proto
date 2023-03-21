@@ -1,7 +1,15 @@
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 package test.proto;
 
+message Fuc {}
+
 message Test {
+  .test.proto.Fuc fuc = 2;
+  Fuc fuc2 = 3;
+  google.protobuf.Timestamp ts = 4;
+
   string x = 1;
 }

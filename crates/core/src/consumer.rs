@@ -48,7 +48,7 @@ impl<G: MessageGroup> Consumer<G> {
 
         // TODO: backoff and retry for initial boot
         consumer
-            .subscribe(&G::REQUESTED_TOPICS)
+            .subscribe(G::REQUESTED_TOPICS)
             .context("Failed to subscribe consumer to requested topics")?;
 
         Ok(Self {
