@@ -60,6 +60,8 @@ pub mod prelude {
 
 #[cfg(feature = "kafka")]
 pub mod consumer;
+#[cfg(feature = "credits")]
+pub mod credits;
 #[cfg(feature = "kafka")]
 pub mod producer;
 pub mod util;
@@ -100,6 +102,11 @@ mod runtime {
         #[arg(long, env, default_value_t = true)]
         kafka_ssl: bool,
 
+        /// Path to the credit price sheet TOML configuration file
+        #[cfg(feature = "credits")]
+        #[arg(long, env)]
+        credit_sheet: PathBuf,
+
         #[command(flatten)]
         extra: T,
     }
@@ -116,6 +123,9 @@ mod runtime {
 
         #[cfg(feature = "kafka")]
         pub consumer_cfg: super::consumer::Config,
+
+        #[cfg(feature = "credits")]
+        pub credits_cfg: super::credits::Config,
     }
 
     impl Common {
@@ -136,6 +146,8 @@ mod runtime {
                 kafka_password,
                 #[cfg(feature = "kafka")]
                 kafka_ssl,
+                #[cfg(feature = "credits")]
+                credit_sheet,
                 extra,
             } = args;
 
@@ -205,6 +217,9 @@ mod runtime {
                 (producer_cfg, consumer_cfg)
             };
 
+            #[cfg(feature = "credits")]
+            let credits_cfg = { super::credits::Config { credit_sheet } };
+
             Ok((
                 Self {
                     rt,
@@ -212,6 +227,8 @@ mod runtime {
                     producer_cfg,
                     #[cfg(feature = "kafka")]
                     consumer_cfg,
+                    #[cfg(feature = "credits")]
+                    credits_cfg,
                 },
                 extra,
             ))

@@ -218,7 +218,10 @@ async fn fetch_schema(
     } else {
         drop(lock_map_read);
         let mut lock_map_write = lock_map.write().await;
-        let Schema { subject, spec: SchemaSpec { version, go_mod: _ } } = schema;
+        let Schema {
+            subject,
+            spec: SchemaSpec { version, go_mod: _ },
+        } = schema;
         lock_map_write.insert(
             Cow::Owned(subject.clone()),
             Cow::Owned(LockedSchema {

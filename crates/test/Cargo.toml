@@ -16,7 +16,7 @@ prost = "0.11.5"
 [dependencies.hub-core]
 package = "holaplex-hub-core"
 path = "../core"
-features = ["kafka"]
+features = ["credits", "kafka"]
 
 [build-dependencies.hub-core-build]
 package = "holaplex-hub-core-build"

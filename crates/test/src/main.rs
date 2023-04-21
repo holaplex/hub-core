@@ -48,6 +48,17 @@ impl hub_core::consumer::MessageGroup for MyGroup {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum MyLineItem {
+    FooSolana,
+}
+
+impl hub_core::credits::LineItem for MyLineItem {
+    const LIST: &'static [hub_core::credits::LineItemDesc<Self>] = &[
+        ("foo", "solana", MyLineItem::FooSolana),
+    ];
+}
+
 fn main() {
     let opts = hub_core::StartConfig {
         service_name: "foo-bar",
@@ -63,6 +74,8 @@ fn main() {
         common.rt.block_on(async move {
             let prod = common.producer_cfg.build::<proto::Test>().await?;
             let cons = common.consumer_cfg.build::<MyGroup>().await?;
+
+            let credits = common.credits_cfg.build::<MyLineItem>().await?;
 
             let test = proto::Test { x: "hi".into() };
 

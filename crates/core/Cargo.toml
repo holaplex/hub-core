@@ -12,6 +12,7 @@ keywords = ["solana", "holaplex", "web3"]
 categories = ["cryptography::cryptocurrencies", "web-programming"]
 
 [features]
+credits = ["toml"]
 kafka = ["rdkafka"]
 
 [dependencies]
@@ -32,6 +33,7 @@ serde_json = "1.0.91"
 serde_with = { version = "2.2.0", features = ["base64", "hex"] }
 thiserror = "1.0.38"
 tokio = { version = "1.23.0", features = ["rt-multi-thread", "parking_lot"] }
+toml = { version = "0.7.3", optional = true }
 tracing = "0.1.37"
 tracing-loki = { version = "0.2.1" }
 tracing-subscriber = { version = "0.3.16", features = ["fmt", "env-filter", "tracing-log"] }
