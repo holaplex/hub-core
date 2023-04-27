@@ -27,11 +27,12 @@ impl Config {
 /// A client for producing credit deduction line items
 #[derive(Debug)]
 pub struct CreditsClient<I> {
-    credit_sheet: HashMap<I, u64>,
+    credit_sheet: CreditSheet<I>,
     producer: producer::Producer<CreditsEvent>,
 }
 
 pub type LineItemDesc<T> = (&'static str, &'static str, T);
+pub type CreditSheet<I> = HashMap<I, u64>;
 
 // TODO: refactor this to something less stupid
 pub trait LineItem: fmt::Debug + Copy + Eq + std::hash::Hash + 'static {
@@ -78,11 +79,31 @@ impl<I: LineItem> CreditsClient<I> {
     }
 
     #[inline]
-    pub async fn send_line_item(&self, item: I) -> Result<()> {
-        let cost = self
-            .credit_sheet
-            .get(&item)
-            .ok_or_else(|| anyhow!("No price associated with credit line item {item:?}"))?;
+    #[must_use]
+    pub fn credit_sheet(&self) -> &CreditSheet<I> {
+        &self.credit_sheet
+    }
+
+    #[inline]
+    pub fn get_cost<Q: fmt::Debug + Eq + std::hash::Hash + ?Sized>(&self, item: &Q) -> Result<u64>
+    where
+        I: Borrow<Q>,
+    {
+        self.credit_sheet
+            .get(item)
+            .ok_or_else(|| anyhow!("No price associated with credit line item {item:?}"))
+            .copied()
+    }
+
+    #[inline]
+    pub async fn send_line_item<Q: fmt::Debug + Eq + std::hash::Hash + ?Sized>(
+        &self,
+        item: &Q,
+    ) -> Result<()>
+    where
+        I: Borrow<Q>,
+    {
+        let credits = self.get_cost(item)?;
 
         self.producer
             .send(Some(&CreditsEvent {}), Some(&CreditsEventKey {}))
