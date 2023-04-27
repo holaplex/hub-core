@@ -167,6 +167,9 @@ mod runtime {
                 });
             }
 
+            #[cfg(feature = "credits")]
+            let credits_cfg;
+
             #[cfg(feature = "kafka")]
             let (producer_cfg, consumer_cfg) = {
                 use rdkafka::config::RDKafkaLogLevel;
@@ -204,8 +207,20 @@ mod runtime {
                 }
                 let config = config; // no more mut
 
+                // Put MPSC producer init here
+
+                #[cfg(feature = "credits")]
+                {
+                    credits_cfg = super::credits::Config {
+                        credit_sheet,
+                        config: DebugShim(config.clone()),
+                    };
+                }
+
+                // Initialize broadcast producer and consumer
+
                 let producer_cfg = super::producer::Config {
-                    service_name: service_name.into(),
+                    topic: service_name.into(),
                     config: DebugShim(config.clone()),
                 };
 
@@ -216,9 +231,6 @@ mod runtime {
 
                 (producer_cfg, consumer_cfg)
             };
-
-            #[cfg(feature = "credits")]
-            let credits_cfg = { super::credits::Config { credit_sheet } };
 
             Ok((
                 Self {

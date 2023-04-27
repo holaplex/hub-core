@@ -337,8 +337,11 @@ pub fn run(config_path: impl AsRef<Path>) -> Result<()> {
 
     let out_dir = PathBuf::try_from(std::env::var("OUT_DIR")?)?;
     let protos = sync_schemas(config_path, &out_dir)?;
-    prost_build::compile_protos(&protos.into_keys().collect::<Box<[_]>>(), &[out_dir])
-        .context("Error compiling schemas")?;
+
+    if !protos.is_empty() {
+        prost_build::compile_protos(&protos.into_keys().collect::<Box<[_]>>(), &[out_dir])
+            .context("Error compiling schemas")?;
+    }
 
     Ok(())
 }

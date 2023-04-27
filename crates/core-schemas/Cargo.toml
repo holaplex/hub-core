@@ -1,0 +1,21 @@
+[package]
+name = "holaplex-hub-core-schemas"
+version = "0.1.0"
+authors = [
+  "Holaplex <engineering@holaplex.com>",
+]
+edition = "2021"
+description = "Core components for the holaplex-hub family of crates"
+readme = "../../README.md"
+license = "AGPL-3.0-or-later"
+keywords = ["solana", "holaplex", "web3"]
+categories = ["cryptography::cryptocurrencies", "web-programming"]
+
+build = "build.rs"
+
+[dependencies]
+prost = "0.11.5"
+
+[build-dependencies.hub-core-build]
+package = "holaplex-hub-core-build"
+path = "../core-build"

@@ -5,7 +5,7 @@ use crate::{prelude::*, util::DebugShim};
 /// Service startup configuration for producing Kafka records
 #[derive(Debug)]
 pub struct Config {
-    pub(crate) service_name: String,
+    pub(crate) topic: String,
     pub(crate) config: DebugShim<rdkafka::ClientConfig>,
 }
 
@@ -42,7 +42,7 @@ impl<M: Message> Producer<M> {
         admin
             .create_topics(
                 &[rdkafka::admin::NewTopic {
-                    name: &config.service_name,
+                    name: &config.topic,
                     config: vec![],
                     num_partitions: 1,
                     replication: rdkafka::admin::TopicReplication::Fixed(1),
@@ -59,7 +59,7 @@ impl<M: Message> Producer<M> {
             .context("Failed to create Kafka producer")?;
 
         Ok(Self {
-            topic: config.service_name,
+            topic: config.topic,
             producer: DebugShim(producer),
             msg: PhantomData::default(),
         })

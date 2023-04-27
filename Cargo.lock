@@ -543,6 +543,7 @@ dependencies = [
  "clap",
  "dotenv",
  "futures-util",
+ "holaplex-hub-core-schemas",
  "hostname",
  "num_cpus",
  "pin-project-lite",
@@ -579,6 +580,14 @@ dependencies = [
  "tokio",
  "toml 0.5.10",
  "url",
+]
+
+[[package]]
+name = "holaplex-hub-core-schemas"
+version = "0.1.0"
+dependencies = [
+ "holaplex-hub-core-build",
+ "prost 0.11.5",
 ]
 
 [[package]]

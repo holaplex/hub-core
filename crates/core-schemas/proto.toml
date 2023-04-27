@@ -1,0 +1,5 @@
+[registry]
+endpoint = "https://schemas.holaplex.tools/"
+
+[schemas]
+# creditsmpsc = 1 # TODO: stub

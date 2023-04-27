@@ -54,9 +54,8 @@ enum MyLineItem {
 }
 
 impl hub_core::credits::LineItem for MyLineItem {
-    const LIST: &'static [hub_core::credits::LineItemDesc<Self>] = &[
-        ("foo", "solana", MyLineItem::FooSolana),
-    ];
+    const LIST: &'static [hub_core::credits::LineItemDesc<Self>] =
+        &[("foo", "solana", MyLineItem::FooSolana)];
 }
 
 fn main() {
@@ -78,6 +77,8 @@ fn main() {
             let credits = common.credits_cfg.build::<MyLineItem>().await?;
 
             let test = proto::Test { x: "hi".into() };
+
+            credits.send_line_item(MyLineItem::FooSolana).await?;
 
             prod.send(Some(&test), Some(&test)).await?;
 
