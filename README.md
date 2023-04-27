@@ -6,7 +6,7 @@ Common packages and utilities used by Holaplex Rust based services.
 
 ### Kafka
 
-When the `kafka` feature is enable the core library includes functions for producing and consuming messages to Kafka. The `rdkafka` dependency builds [librdkafka](https://github.com/confluentinc/librdkafka) from source which requires the below packages to be installed on your system.
+When the `kafka` feature is enabled the core library includes functions for producing and consuming messages to Kafka. The `rdkafka` dependency builds [librdkafka](https://github.com/confluentinc/librdkafka) from source which requires the below packages to be installed on your system.
 
 #### MacOS
 
