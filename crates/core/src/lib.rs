@@ -20,6 +20,8 @@ pub extern crate prost_types;
 pub extern crate reqwest;
 pub extern crate serde_json;
 pub extern crate serde_with;
+#[cfg(feature = "strum")]
+pub extern crate strum;
 pub extern crate thiserror;
 pub extern crate tokio;
 pub extern crate tracing;
@@ -62,7 +64,7 @@ pub mod prelude {
 pub mod consumer;
 #[cfg(feature = "credits")]
 pub mod credits;
-#[cfg(feature = "kafka")]
+#[cfg(feature = "kafka_internal")]
 pub mod producer;
 pub mod util;
 
@@ -83,22 +85,22 @@ mod runtime {
         jobs: Option<usize>,
 
         /// The Kafka broker list
-        #[cfg(feature = "kafka")]
+        #[cfg(feature = "kafka_internal")]
         #[arg(long, env)]
         kafka_brokers: String,
 
         /// Kafka SASL username
-        #[cfg(feature = "kafka")]
+        #[cfg(feature = "kafka_internal")]
         #[arg(long, env, requires("kafka_password"))]
         kafka_username: Option<String>,
 
         /// Kafka SASL password
-        #[cfg(feature = "kafka")]
+        #[cfg(feature = "kafka_internal")]
         #[arg(long, env, requires("kafka_username"))]
         kafka_password: Option<DebugShim<String>>, // hide
 
         /// Whether to use SSL Kafka channels
-        #[cfg(feature = "kafka")]
+        #[cfg(feature = "kafka_internal")]
         #[arg(long, env, default_value_t = true)]
         kafka_ssl: bool,
 
@@ -138,13 +140,13 @@ mod runtime {
             let StartConfig { service_name } = cfg;
             let CommonArgs {
                 jobs,
-                #[cfg(feature = "kafka")]
+                #[cfg(feature = "kafka_internal")]
                 kafka_brokers,
-                #[cfg(feature = "kafka")]
+                #[cfg(feature = "kafka_internal")]
                 kafka_username,
-                #[cfg(feature = "kafka")]
+                #[cfg(feature = "kafka_internal")]
                 kafka_password,
-                #[cfg(feature = "kafka")]
+                #[cfg(feature = "kafka_internal")]
                 kafka_ssl,
                 #[cfg(feature = "credits")]
                 credit_sheet,
@@ -169,9 +171,13 @@ mod runtime {
 
             #[cfg(feature = "credits")]
             let credits_cfg;
-
             #[cfg(feature = "kafka")]
-            let (producer_cfg, consumer_cfg) = {
+            let producer_cfg;
+            #[cfg(feature = "kafka")]
+            let consumer_cfg;
+
+            #[cfg(feature = "kafka_internal")]
+            {
                 use rdkafka::config::RDKafkaLogLevel;
                 use tracing::level_filters::LevelFilter;
 
@@ -219,18 +225,22 @@ mod runtime {
 
                 // Initialize broadcast producer and consumer
 
-                let producer_cfg = super::producer::Config {
-                    topic: service_name.into(),
-                    config: DebugShim(config.clone()),
-                };
+                #[cfg(feature = "kafka")]
+                {
+                    producer_cfg = super::producer::Config {
+                        topic: service_name.into(),
+                        config: DebugShim(config.clone()),
+                    };
+                }
 
-                let consumer_cfg = super::consumer::Config {
-                    service_name: service_name.into(),
-                    config: DebugShim(config),
-                };
-
-                (producer_cfg, consumer_cfg)
-            };
+                #[cfg(feature = "kafka")]
+                {
+                    consumer_cfg = super::consumer::Config {
+                        service_name: service_name.into(),
+                        config: DebugShim(config),
+                    };
+                }
+            }
 
             Ok((
                 Self {

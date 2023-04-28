@@ -7,10 +7,14 @@
 )]
 #![warn(clippy::pedantic, clippy::cargo, missing_docs)]
 
-// include!(concat!(env!("OUT_DIR"), "/creditsmpsc.proto.rs"));
+#[allow(missing_copy_implementations)]
+mod generated {
+    pub mod credits {
+        include!(concat!(env!("OUT_DIR"), "/credits.rs"));
+    }
+    pub mod credits_mpsc {
+        include!(concat!(env!("OUT_DIR"), "/credits_mpsc.rs"));
+    }
+}
 
-#[derive(prost::Message, Clone, Copy)]
-pub struct CreditsEventKey {} // TODO: stub
-
-#[derive(prost::Message, Clone, Copy)]
-pub struct CreditsEvent {} // TODO: stub
+pub use generated::*;

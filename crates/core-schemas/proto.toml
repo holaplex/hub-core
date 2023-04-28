@@ -2,4 +2,5 @@
 endpoint = "https://schemas.holaplex.tools/"
 
 [schemas]
-# creditsmpsc = 1 # TODO: stub
+credits = 1
+credits_mpsc = 1

@@ -1,0 +1,9 @@
+[[schemas]]
+subject = "credits"
+version = 1
+sha512 = "19dc40ab5bd6de084ed5c2408f530dae53ed66e280a5b325c165ccc9e7fe88c60abe158cd4ee1e30dc925802e108f7389212a097b2b71f95b672bdcc1686f9cb"
+
+[[schemas]]
+subject = "credits_mpsc"
+version = 1
+sha512 = "aad4edcbf21548db388efe93212152aece3b9ab2886db0b6d1054aea1b2720af8fff90234e484ef008c20767c96a141d3e5fc7cca116816755d584f8ae519b3d"

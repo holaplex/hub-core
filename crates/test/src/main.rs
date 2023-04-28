@@ -78,7 +78,7 @@ fn main() {
 
             let test = proto::Test { x: "hi".into() };
 
-            credits.send_line_item(MyLineItem::FooSolana).await?;
+            credits.send_deduction(&MyLineItem::FooSolana).await?;
 
             prod.send(Some(&test), Some(&test)).await?;
 

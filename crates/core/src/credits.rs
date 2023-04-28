@@ -1,10 +1,11 @@
 use std::{collections::HashMap, io::prelude::*, path::PathBuf};
 
-use hub_core_schemas::{CreditsEvent, CreditsEventKey};
+pub use hub_core_schemas::credits_mpsc::credits_mpsc_event::Event;
+use hub_core_schemas::{credits::CreditsEventKey, credits_mpsc::CreditsMpscEvent};
 
 use crate::{prelude::*, producer, util::DebugShim};
 
-impl producer::Message for CreditsEvent {
+impl producer::Message for CreditsMpscEvent {
     type Key = CreditsEventKey;
 }
 
@@ -25,19 +26,29 @@ impl Config {
 }
 
 /// A client for producing credit deduction line items
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CreditsClient<I> {
-    credit_sheet: CreditSheet<I>,
-    producer: producer::Producer<CreditsEvent>,
+    credit_sheet: Arc<CreditSheet<I>>,
+    producer: producer::Producer<CreditsMpscEvent>,
 }
 
-pub type LineItemDesc<T> = (&'static str, &'static str, T);
 pub type CreditSheet<I> = HashMap<I, u64>;
 
-// TODO: refactor this to something less stupid
-pub trait LineItem: fmt::Debug + Copy + Eq + std::hash::Hash + 'static {
-    /// Tuples of (action name, blockchain, corresponding line item
-    const LIST: &'static [LineItemDesc<Self>];
+#[derive(Debug, Clone, Copy, strum::AsRefStr, strum::Display)]
+#[strum(serialize_all = "kebab-case")]
+pub enum Blockchain {
+    Solana,
+}
+
+pub trait LineItem:
+    fmt::Debug + Eq + std::hash::Hash + strum::IntoEnumIterator + Into<Event> + 'static
+{
+    fn action_and_blockchain(&self) -> (&'static str, Blockchain);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TransactionId {
+    _stub: PhantomData<()>, // TODO: stub
 }
 
 impl<I: LineItem> CreditsClient<I> {
@@ -55,22 +66,24 @@ impl<I: LineItem> CreditsClient<I> {
             toml::from_str(&s).context("Syntax error in credit sheet")?;
 
         Ok(Self {
-            credit_sheet: I::LIST
-                .iter()
-                .copied()
-                .map(|(action, blockchain, item)| {
-                    toml.get(action)
-                        .and_then(|map| map.get(blockchain))
-                        .ok_or_else(|| {
-                            anyhow!(
-                                "Missing entry in credit sheet for {action:?} on {blockchain:?}"
-                            )
-                        })
-                        .map(|i| (item, *i))
-                })
-                .collect::<Result<_>>()?,
+            credit_sheet: Arc::new(
+                I::iter()
+                    .map(|item| {
+                        let (action, blockchain) = item.action_and_blockchain();
+
+                        toml.get(action)
+                            .and_then(|map| map.get(blockchain.as_ref()))
+                            .ok_or_else(|| {
+                                anyhow!(
+                                    "Missing entry in credit sheet for {action:?} on {blockchain:?}"
+                                )
+                            })
+                            .map(|i| (item, *i))
+                    })
+                    .collect::<Result<_>>()?,
+            ),
             producer: producer::Config {
-                topic: "creditsmpsc".into(), // TODO: hyphenate?
+                topic: "credits_mpsc".into(),
                 config,
             }
             .build()
@@ -96,18 +109,30 @@ impl<I: LineItem> CreditsClient<I> {
     }
 
     #[inline]
-    pub async fn send_line_item<Q: fmt::Debug + Eq + std::hash::Hash + ?Sized>(
+    pub async fn submit_pending_deduction(
         &self,
-        item: &Q,
-    ) -> Result<()>
-    where
-        I: Borrow<Q>,
-    {
-        let credits = self.get_cost(item)?;
+        organization_id: String,
+        user_id: String,
+        item: I,
+    ) -> Result<TransactionId> {
+        let credits = self.get_cost(&item)?;
 
         self.producer
-            .send(Some(&CreditsEvent {}), Some(&CreditsEventKey {}))
-            .await
-            .map_err(Into::into)
+            .send(
+                Some(&CreditsMpscEvent {
+                    event: Some(item.into()),
+                }),
+                Some(&CreditsEventKey {
+                    id: organization_id,
+                    user_id,
+                }),
+            )
+            .await?;
+
+        Ok(TransactionId { _stub: PhantomData::default() })
+    }
+
+    pub async fn confirm_deduction(&self, id: TransactionId) -> Result<()> {
+        todo!("stub")
     }
 }
