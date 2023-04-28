@@ -20,8 +20,6 @@ pub extern crate prost_types;
 pub extern crate reqwest;
 pub extern crate serde_json;
 pub extern crate serde_with;
-#[cfg(feature = "strum")]
-pub extern crate strum;
 pub extern crate thiserror;
 pub extern crate tokio;
 pub extern crate tracing;

@@ -48,14 +48,17 @@ impl hub_core::consumer::MessageGroup for MyGroup {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::AsRefStr)]
 enum MyLineItem {
-    FooSolana,
+    Foo,
 }
 
-impl hub_core::credits::LineItem for MyLineItem {
-    const LIST: &'static [hub_core::credits::LineItemDesc<Self>] =
-        &[("foo", "solana", MyLineItem::FooSolana)];
+impl From<MyLineItem> for hub_core::credits::Action {
+    fn from(value: MyLineItem) -> Self {
+        match value {
+            MyLineItem::Foo => hub_core::credits::Action::Unspecified,
+        }
+    }
 }
 
 fn main() {
@@ -78,7 +81,16 @@ fn main() {
 
             let test = proto::Test { x: "hi".into() };
 
-            credits.send_deduction(&MyLineItem::FooSolana).await?;
+            let id = credits
+                .submit_pending_deduction(
+                    "foo-org".into(),
+                    "foo-user".into(),
+                    MyLineItem::Foo,
+                    hub_core::credits::Blockchain::Solana,
+                )
+                .await?;
+
+            credits.confirm_deduction(id).await?;
 
             prod.send(Some(&test), Some(&test)).await?;
 

@@ -598,6 +598,7 @@ dependencies = [
  "holaplex-hub-core",
  "holaplex-hub-core-build",
  "prost 0.11.5",
+ "strum",
 ]
 
 [[package]]

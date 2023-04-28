@@ -1,12 +1,13 @@
 use std::{collections::HashMap, io::prelude::*, path::PathBuf};
 
-pub use hub_core_schemas::credits_mpsc::credits_mpsc_event::Event;
-use hub_core_schemas::{credits::CreditsEventKey, credits_mpsc::CreditsMpscEvent};
+pub use hub_core_schemas::credits::Action;
+use hub_core_schemas::{credits, credits_mpsc};
+use strum::IntoEnumIterator;
 
 use crate::{prelude::*, producer, util::DebugShim};
 
-impl producer::Message for CreditsMpscEvent {
-    type Key = CreditsEventKey;
+impl producer::Message for credits_mpsc::CreditsMpscEvent {
+    type Key = credits::CreditsEventKey;
 }
 
 /// Service startup configuration for charging credits and reading the credit
@@ -29,24 +30,53 @@ impl Config {
 #[derive(Debug, Clone)]
 pub struct CreditsClient<I> {
     credit_sheet: Arc<CreditSheet<I>>,
-    producer: producer::Producer<CreditsMpscEvent>,
+    producer: producer::Producer<credits_mpsc::CreditsMpscEvent>,
 }
 
-pub type CreditSheet<I> = HashMap<I, u64>;
+pub type CreditSheet<I> = HashMap<(I, Blockchain), u64>;
 
-#[derive(Debug, Clone, Copy, strum::AsRefStr, strum::Display)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::AsRefStr, strum::Display,
+)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Blockchain {
+    OffChain,
     Solana,
+    Polygon,
+    Ethereum,
+}
+
+impl From<Blockchain> for credits::Blockchain {
+    fn from(value: Blockchain) -> Self {
+        match value {
+            Blockchain::OffChain => credits::Blockchain::Unspecified,
+            Blockchain::Solana => credits::Blockchain::Solana,
+            Blockchain::Polygon => credits::Blockchain::Polygon,
+            Blockchain::Ethereum => credits::Blockchain::Ethereum,
+        }
+    }
 }
 
 pub trait LineItem:
-    fmt::Debug + Eq + std::hash::Hash + strum::IntoEnumIterator + Into<Event> + 'static
+    fmt::Debug + Copy + Eq + std::hash::Hash + AsRef<str> + IntoEnumIterator + Into<Action> + 'static
 {
-    fn action_and_blockchain(&self) -> (&'static str, Blockchain);
+}
+
+impl<
+    T: fmt::Debug
+        + Copy
+        + Eq
+        + std::hash::Hash
+        + AsRef<str>
+        + IntoEnumIterator
+        + Into<Action>
+        + 'static,
+> LineItem for T
+{
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[must_use = "Any created transactions should be confirmed or they will be discarded"]
 pub struct TransactionId {
     _stub: PhantomData<()>, // TODO: stub
 }
@@ -65,22 +95,24 @@ impl<I: LineItem> CreditsClient<I> {
         let toml: HashMap<String, HashMap<String, u64>> =
             toml::from_str(&s).context("Syntax error in credit sheet")?;
 
+        for item in I::iter() {
+            if !toml.contains_key(item.as_ref()) {
+                bail!("Missing entry in credit sheet for {item:?}");
+            }
+        }
+
         Ok(Self {
             credit_sheet: Arc::new(
                 I::iter()
-                    .map(|item| {
-                        let (action, blockchain) = item.action_and_blockchain();
+                    .flat_map(|item| {
+                        let action = item.as_ref();
 
-                        toml.get(action)
-                            .and_then(|map| map.get(blockchain.as_ref()))
-                            .ok_or_else(|| {
-                                anyhow!(
-                                    "Missing entry in credit sheet for {action:?} on {blockchain:?}"
-                                )
-                            })
-                            .map(|i| (item, *i))
+                        let toml = toml.get(action).unwrap_or_else(|| unreachable!());
+
+                        Blockchain::iter()
+                            .filter_map(move |b| toml.get(b.as_ref()).map(|c| ((item, b), *c)))
                     })
-                    .collect::<Result<_>>()?,
+                    .collect(),
             ),
             producer: producer::Config {
                 topic: "credits_mpsc".into(),
@@ -98,13 +130,13 @@ impl<I: LineItem> CreditsClient<I> {
     }
 
     #[inline]
-    pub fn get_cost<Q: fmt::Debug + Eq + std::hash::Hash + ?Sized>(&self, item: &Q) -> Result<u64>
+    pub fn get_cost<Q: fmt::Debug + Eq + std::hash::Hash + ?Sized>(&self, key: &Q) -> Result<u64>
     where
-        I: Borrow<Q>,
+        (I, Blockchain): Borrow<Q>,
     {
         self.credit_sheet
-            .get(item)
-            .ok_or_else(|| anyhow!("No price associated with credit line item {item:?}"))
+            .get(key)
+            .ok_or_else(|| anyhow!("No price in credit sheet found for key {key:?}"))
             .copied()
     }
 
@@ -114,22 +146,34 @@ impl<I: LineItem> CreditsClient<I> {
         organization_id: String,
         user_id: String,
         item: I,
+        blockchain: Blockchain,
     ) -> Result<TransactionId> {
-        let credits = self.get_cost(&item)?;
+        let credits = self
+            .get_cost(&(item, blockchain))?
+            .try_into()
+            .context("Credit price was too big to transmit")?;
 
         self.producer
             .send(
-                Some(&CreditsMpscEvent {
-                    event: Some(item.into()),
+                Some(&credits_mpsc::CreditsMpscEvent {
+                    event: Some(credits_mpsc::credits_mpsc_event::Event::DeductCredits(
+                        credits::Credits {
+                            credits,
+                            action: item.into().into(),
+                            blockchain: credits::Blockchain::from(blockchain).into(),
+                        },
+                    )),
                 }),
-                Some(&CreditsEventKey {
+                Some(&credits::CreditsEventKey {
                     id: organization_id,
                     user_id,
                 }),
             )
             .await?;
 
-        Ok(TransactionId { _stub: PhantomData::default() })
+        Ok(TransactionId {
+            _stub: PhantomData::default(),
+        })
     }
 
     pub async fn confirm_deduction(&self, id: TransactionId) -> Result<()> {
