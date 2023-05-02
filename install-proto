@@ -1,0 +1,4 @@
+#!/bin/sh
+
+set -e
+cargo install --locked --bin hub-core-proto --path crates/core-build/ --features clap

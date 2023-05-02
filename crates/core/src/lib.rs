@@ -8,6 +8,7 @@
     missing_copy_implementations
 )]
 #![warn(clippy::pedantic, clippy::cargo, missing_docs)]
+#![allow(clippy::module_name_repetitions)]
 
 pub extern crate anyhow;
 pub extern crate async_trait;
@@ -60,7 +61,9 @@ pub mod prelude {
 
 #[cfg(feature = "kafka")]
 pub mod consumer;
-#[cfg(feature = "kafka")]
+#[cfg(feature = "credits")]
+pub mod credits;
+#[cfg(feature = "kafka_internal")]
 pub mod producer;
 pub mod util;
 
@@ -81,24 +84,29 @@ mod runtime {
         jobs: Option<usize>,
 
         /// The Kafka broker list
-        #[cfg(feature = "kafka")]
+        #[cfg(feature = "kafka_internal")]
         #[arg(long, env)]
         kafka_brokers: String,
 
         /// Kafka SASL username
-        #[cfg(feature = "kafka")]
+        #[cfg(feature = "kafka_internal")]
         #[arg(long, env, requires("kafka_password"))]
         kafka_username: Option<String>,
 
         /// Kafka SASL password
-        #[cfg(feature = "kafka")]
+        #[cfg(feature = "kafka_internal")]
         #[arg(long, env, requires("kafka_username"))]
         kafka_password: Option<DebugShim<String>>, // hide
 
         /// Whether to use SSL Kafka channels
-        #[cfg(feature = "kafka")]
+        #[cfg(feature = "kafka_internal")]
         #[arg(long, env, default_value_t = true)]
         kafka_ssl: bool,
+
+        /// Path to the credit price sheet TOML configuration file
+        #[cfg(feature = "credits")]
+        #[arg(long, env)]
+        credit_sheet: PathBuf,
 
         #[command(flatten)]
         extra: T,
@@ -116,6 +124,9 @@ mod runtime {
 
         #[cfg(feature = "kafka")]
         pub consumer_cfg: super::consumer::Config,
+
+        #[cfg(feature = "credits")]
+        pub credits_cfg: super::credits::Config,
     }
 
     impl Common {
@@ -128,14 +139,16 @@ mod runtime {
             let StartConfig { service_name } = cfg;
             let CommonArgs {
                 jobs,
-                #[cfg(feature = "kafka")]
+                #[cfg(feature = "kafka_internal")]
                 kafka_brokers,
-                #[cfg(feature = "kafka")]
+                #[cfg(feature = "kafka_internal")]
                 kafka_username,
-                #[cfg(feature = "kafka")]
+                #[cfg(feature = "kafka_internal")]
                 kafka_password,
-                #[cfg(feature = "kafka")]
+                #[cfg(feature = "kafka_internal")]
                 kafka_ssl,
+                #[cfg(feature = "credits")]
+                credit_sheet,
                 extra,
             } = args;
 
@@ -155,8 +168,15 @@ mod runtime {
                 });
             }
 
+            #[cfg(feature = "credits")]
+            let credits_cfg;
             #[cfg(feature = "kafka")]
-            let (producer_cfg, consumer_cfg) = {
+            let producer_cfg;
+            #[cfg(feature = "kafka")]
+            let consumer_cfg;
+
+            #[cfg(feature = "kafka_internal")]
+            {
                 use rdkafka::config::RDKafkaLogLevel;
                 use tracing::level_filters::LevelFilter;
 
@@ -192,18 +212,34 @@ mod runtime {
                 }
                 let config = config; // no more mut
 
-                let producer_cfg = super::producer::Config {
-                    service_name: service_name.into(),
-                    config: DebugShim(config.clone()),
-                };
+                // Put MPSC producer init here
 
-                let consumer_cfg = super::consumer::Config {
-                    service_name: service_name.into(),
-                    config: DebugShim(config),
-                };
+                #[cfg(feature = "credits")]
+                {
+                    credits_cfg = super::credits::Config {
+                        credit_sheet,
+                        config: DebugShim(config.clone()),
+                    };
+                }
 
-                (producer_cfg, consumer_cfg)
-            };
+                // Initialize broadcast producer and consumer
+
+                #[cfg(feature = "kafka")]
+                {
+                    producer_cfg = super::producer::Config {
+                        topic: service_name.into(),
+                        config: DebugShim(config.clone()),
+                    };
+                }
+
+                #[cfg(feature = "kafka")]
+                {
+                    consumer_cfg = super::consumer::Config {
+                        service_name: service_name.into(),
+                        config: DebugShim(config),
+                    };
+                }
+            }
 
             Ok((
                 Self {
@@ -212,6 +248,8 @@ mod runtime {
                     producer_cfg,
                     #[cfg(feature = "kafka")]
                     consumer_cfg,
+                    #[cfg(feature = "credits")]
+                    credits_cfg,
                 },
                 extra,
             ))
@@ -310,7 +348,7 @@ mod runtime {
                 .unwrap_or_else(|e| init_error!("Failed to load .env files: {e:?}"));
 
                 let opts = clap::Parser::parse();
-                std::mem::drop(span);
+                drop(span);
                 let span = error_span!("boot", ?opts).entered();
                 let Opts {
                     log_filter,
@@ -357,7 +395,7 @@ mod runtime {
                     init_subscriber(log_filter, |r| r);
                 }
 
-                std::mem::drop(span);
+                drop(span);
 
                 (common, loki_task)
             },

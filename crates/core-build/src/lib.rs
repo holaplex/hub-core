@@ -17,53 +17,71 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
+use futures_util::TryFutureExt;
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-#[derive(serde::Deserialize)]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 struct Config {
     registry: RegistryConfig,
-    schemas: HashMap<String, SchemaSpec>,
+    schemas: HashMap<String, SchemaSpecConfig>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 struct RegistryConfig {
     endpoint: url::Url,
 }
 
-#[derive(serde::Deserialize)]
-#[serde(untagged)]
-enum SchemaSpec {
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, untagged)]
+enum SchemaSpecConfig {
     Simple(usize),
-    Complex { version: usize },
+    Complex(SchemaSpec),
 }
 
-impl SchemaSpec {
+impl SchemaSpecConfig {
     fn into_schema(self, subject: String) -> Schema {
-        let version = match self {
-            Self::Simple(v) => v,
-            SchemaSpec::Complex { version } => version,
+        let spec = match self {
+            Self::Simple(version) => SchemaSpec {
+                version,
+                go_mod: None,
+            },
+            SchemaSpecConfig::Complex(c) => c,
         };
 
-        Schema { subject, version }
+        Schema { subject, spec }
     }
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
-struct Schema {
-    subject: String,
-    version: usize,
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct SchemaSpec {
+    pub version: usize,
+    pub go_mod: Option<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Schema {
+    pub subject: String,
+    #[serde(flatten)]
+    pub spec: SchemaSpec,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 struct Lock<'a> {
     #[serde(default)]
     schemas: BTreeSet<Cow<'a, LockedSchema>>,
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 struct LockedSchema {
-    #[serde(flatten)]
-    schema: Schema,
+    subject: String,
+    version: usize,
     #[serde(with = "hex::serde")]
     sha512: Vec<u8>,
 }
@@ -84,7 +102,14 @@ fn read_lock<'a>(
 ) -> Option<&'a Cow<'a, LockedSchema>> {
     let locked = lock_map
         .get(&Cow::Borrowed(&*schema.subject))
-        .and_then(|l| (l.schema == *schema).then_some(l));
+        .and_then(|locked| {
+            let LockedSchema {
+                subject,
+                version,
+                sha512: _,
+            } = locked.as_ref();
+            (subject == &schema.subject && version == &schema.spec.version).then_some(locked)
+        });
 
     locked
 }
@@ -148,7 +173,7 @@ async fn fetch_schema(
         .push("subjects")
         .push(&schema.subject)
         .push("versions")
-        .push(&schema.version.to_string())
+        .push(&schema.spec.version.to_string())
         .push("schema");
 
     let res = reqwest::get(endpoint.clone())
@@ -188,15 +213,20 @@ async fn fetch_schema(
             locked.sha512 == sum.as_slice(),
             "Checksum mismatch for {}@{}",
             schema.subject,
-            schema.version
+            schema.spec.version
         );
     } else {
-        std::mem::drop(lock_map_read);
+        drop(lock_map_read);
         let mut lock_map_write = lock_map.write().await;
+        let Schema {
+            subject,
+            spec: SchemaSpec { version, go_mod: _ },
+        } = schema;
         lock_map_write.insert(
-            Cow::Owned(schema.subject.clone()),
+            Cow::Owned(subject.clone()),
             Cow::Owned(LockedSchema {
-                schema,
+                subject,
+                version,
                 sha512: sum.to_vec(),
             }),
         );
@@ -205,20 +235,16 @@ async fn fetch_schema(
     Ok(path)
 }
 
-/// Load and compile Protobuf schemas requested by the TOML config file at the
-/// given path
+/// Download Protobuf schemas requested by the TOML config file at the given
+/// config path to the specified output directory
 ///
 /// # Errors
 /// Fails if the schemas cannot successfully be downloaded and compiled or if
 /// a lockfile validation error occurs.
-pub fn run(config_path: impl AsRef<Path>) -> Result<()> {
-    println!(
-        "cargo:rerun-if-changed={}",
-        config_path.as_ref().to_string_lossy()
-    );
-
-    let out_dir = PathBuf::try_from(std::env::var("OUT_DIR")?)?;
-
+pub fn sync_schemas(
+    config_path: impl AsRef<Path>,
+    out_dir: impl AsRef<Path>,
+) -> Result<HashMap<PathBuf, Schema>> {
     let config_path = config_path.as_ref();
     let lock_path = config_path.with_extension("lock");
     let mut config = String::new();
@@ -240,11 +266,11 @@ pub fn run(config_path: impl AsRef<Path>) -> Result<()> {
         .transpose()?;
     let Lock {
         schemas: locked_schemas,
-    } = toml::from_str(&lock)?;
+    } = toml::from_str(&lock).context("Failed to deserialize lockfile")?;
 
     let lock_map: LockMap = locked_schemas
         .iter()
-        .map(|s| (Cow::Borrowed(&*s.schema.subject), Cow::Borrowed(s.as_ref())))
+        .map(|s| (Cow::Borrowed(&*s.subject), Cow::Borrowed(s.as_ref())))
         .collect();
 
     let (protos, new_lock_map) = tokio::runtime::Builder::new_current_thread()
@@ -255,16 +281,19 @@ pub fn run(config_path: impl AsRef<Path>) -> Result<()> {
             let lock_map = RwLock::new(lock_map.clone());
 
             futures_util::future::join_all(schemas.into_iter().map(|(subj, spec)| {
+                let schema = spec.into_schema(subj);
+
                 fetch_schema(
-                    &out_dir,
+                    out_dir.as_ref(),
                     registry.endpoint.clone(),
-                    spec.into_schema(subj),
+                    schema.clone(),
                     &lock_map,
                 )
+                .map_ok(|p| (p, schema))
             }))
             .await
             .into_iter()
-            .collect::<Result<Vec<_>>>()
+            .collect::<Result<HashMap<_, _>>>()
             .map(|p| (p, lock_map.into_inner()))
         })
         .context("Couldn't fetch all requested schemas")?;
@@ -291,7 +320,28 @@ pub fn run(config_path: impl AsRef<Path>) -> Result<()> {
             .with_context(|| format!("Failed to save new lockfile to {lock_path:?}"))?;
     }
 
-    prost_build::compile_protos(&protos, &[out_dir]).context("Error compiling schemas")?;
+    Ok(protos)
+}
+
+/// Load and compile Protobuf schemas requested by the TOML config file at the
+/// given path
+///
+/// # Errors
+/// Fails if the schemas cannot successfully be downloaded and compiled or if
+/// a lockfile validation error occurs.
+pub fn run(config_path: impl AsRef<Path>) -> Result<()> {
+    println!(
+        "cargo:rerun-if-changed={}",
+        config_path.as_ref().to_string_lossy()
+    );
+
+    let out_dir = PathBuf::try_from(std::env::var("OUT_DIR")?)?;
+    let protos = sync_schemas(config_path, &out_dir)?;
+
+    if !protos.is_empty() {
+        prost_build::compile_protos(&protos.into_keys().collect::<Box<[_]>>(), &[out_dir])
+            .context("Error compiling schemas")?;
+    }
 
     Ok(())
 }
