@@ -83,12 +83,14 @@ fn main() {
 
             let id = credits
                 .submit_pending_deduction(
-                    "foo-org".into(),
-                    "foo-user".into(),
+                    hub_core::uuid::Uuid::default(),
+                    hub_core::uuid::Uuid::default(),
                     MyLineItem::Foo,
                     hub_core::credits::Blockchain::Solana,
+                    31,
                 )
-                .await?;
+                .await?
+                .context("Insufficient balance!")?;
 
             credits.confirm_deduction(id).await?;
 

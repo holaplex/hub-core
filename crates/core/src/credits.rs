@@ -173,18 +173,29 @@ impl<I: LineItem> CreditsClient<I> {
     /// Generate a new transaction ID and submit a pending transaction with it
     /// using the given transaction details
     ///
+    /// If the available balance reported is insufficient this method will do
+    /// nothing and return `Ok(None)`.
+    ///
     /// # Errors
     /// This method returns an error if the associated credit cost of the action
     /// cannot be found or if transmitting the pending transaction fails.
+    // TODO: convert the return to an HTTP 4xx/5xx error depending on cause of
+    //       error
     pub async fn submit_pending_deduction(
         &self,
         organization_id: Uuid,
         user_id: Uuid,
         item: I,
         blockchain: Blockchain,
-    ) -> Result<TransactionId> {
-        let credits = self
-            .get_cost(&(item, blockchain))?
+        available_balance: u64,
+    ) -> Result<Option<TransactionId>> {
+        let credits = self.get_cost(&(item, blockchain))?;
+
+        if available_balance < credits {
+            return Ok(None);
+        }
+
+        let credits = credits
             .try_into()
             .context("Credit price was too big to transmit")?;
 
@@ -212,7 +223,7 @@ impl<I: LineItem> CreditsClient<I> {
             .await
             .context("Error sending pending transaction event")?;
 
-        Ok(TransactionId(txid))
+        Ok(Some(TransactionId(txid)))
     }
 
     /// Submit a confirmation of the transaction with the given ID
