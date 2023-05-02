@@ -28,6 +28,7 @@ num_cpus = { version = "1.15.0" }
 pin-project-lite = "0.2.9"
 prost = "0.11.5"
 prost-types = "0.11.5"
+rand = { version = "0.8.5", optional = true }
 rdkafka = { version = "0.29.0", features = ["zstd", "ssl", "sasl"], optional = true }
 reqwest = { version = "0.11.14", features = ["json"] }
 serde_json = "1.0.91"

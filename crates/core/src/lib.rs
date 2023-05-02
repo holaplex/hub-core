@@ -8,6 +8,7 @@
     missing_copy_implementations
 )]
 #![warn(clippy::pedantic, clippy::cargo, missing_docs)]
+#![allow(clippy::module_name_repetitions)]
 
 pub extern crate anyhow;
 pub extern crate async_trait;
