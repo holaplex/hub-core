@@ -12,7 +12,7 @@ keywords = ["solana", "holaplex", "web3"]
 categories = ["cryptography::cryptocurrencies", "web-programming"]
 
 [features]
-credits = ["kafka_internal", "strum", "toml"]
+credits = ["kafka_internal", "rand", "strum", "toml"]
 kafka = ["kafka_internal"]
 kafka_internal = ["rdkafka"]
 
