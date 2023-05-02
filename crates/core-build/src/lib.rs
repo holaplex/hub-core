@@ -218,7 +218,10 @@ async fn fetch_schema(
     } else {
         drop(lock_map_read);
         let mut lock_map_write = lock_map.write().await;
-        let Schema { subject, spec: SchemaSpec { version, go_mod: _ } } = schema;
+        let Schema {
+            subject,
+            spec: SchemaSpec { version, go_mod: _ },
+        } = schema;
         lock_map_write.insert(
             Cow::Owned(subject.clone()),
             Cow::Owned(LockedSchema {
@@ -334,8 +337,11 @@ pub fn run(config_path: impl AsRef<Path>) -> Result<()> {
 
     let out_dir = PathBuf::try_from(std::env::var("OUT_DIR")?)?;
     let protos = sync_schemas(config_path, &out_dir)?;
-    prost_build::compile_protos(&protos.into_keys().collect::<Box<[_]>>(), &[out_dir])
-        .context("Error compiling schemas")?;
+
+    if !protos.is_empty() {
+        prost_build::compile_protos(&protos.into_keys().collect::<Box<[_]>>(), &[out_dir])
+            .context("Error compiling schemas")?;
+    }
 
     Ok(())
 }

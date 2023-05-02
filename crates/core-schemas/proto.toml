@@ -1,0 +1,6 @@
+[registry]
+endpoint = "https://schemas.holaplex.tools/"
+
+[schemas]
+credits = 2
+credits_mpsc = 2

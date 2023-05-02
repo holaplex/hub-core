@@ -48,6 +48,19 @@ impl hub_core::consumer::MessageGroup for MyGroup {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::AsRefStr)]
+enum MyLineItem {
+    Foo,
+}
+
+impl From<MyLineItem> for hub_core::credits::Action {
+    fn from(value: MyLineItem) -> Self {
+        match value {
+            MyLineItem::Foo => hub_core::credits::Action::Unspecified,
+        }
+    }
+}
+
 fn main() {
     let opts = hub_core::StartConfig {
         service_name: "foo-bar",
@@ -64,7 +77,22 @@ fn main() {
             let prod = common.producer_cfg.build::<proto::Test>().await?;
             let cons = common.consumer_cfg.build::<MyGroup>().await?;
 
+            let credits = common.credits_cfg.build::<MyLineItem>().await?;
+
             let test = proto::Test { x: "hi".into() };
+
+            let id = credits
+                .submit_pending_deduction(
+                    hub_core::uuid::Uuid::default(),
+                    hub_core::uuid::Uuid::default(),
+                    MyLineItem::Foo,
+                    hub_core::credits::Blockchain::Solana,
+                    31,
+                )
+                .await?
+                .context("Insufficient balance!")?;
+
+            credits.confirm_deduction(id).await?;
 
             prod.send(Some(&test), Some(&test)).await?;
 

@@ -12,7 +12,9 @@ keywords = ["solana", "holaplex", "web3"]
 categories = ["cryptography::cryptocurrencies", "web-programming"]
 
 [features]
-kafka = ["rdkafka"]
+credits = ["kafka_internal", "rand", "strum", "toml"]
+kafka = ["kafka_internal"]
+kafka_internal = ["rdkafka"]
 
 [dependencies]
 anyhow = "1.0.66"
@@ -26,14 +28,21 @@ num_cpus = { version = "1.15.0" }
 pin-project-lite = "0.2.9"
 prost = "0.11.5"
 prost-types = "0.11.5"
+rand = { version = "0.8.5", optional = true }
 rdkafka = { version = "0.29.0", features = ["zstd", "ssl", "sasl"], optional = true }
 reqwest = { version = "0.11.14", features = ["json"] }
 serde_json = "1.0.91"
 serde_with = { version = "2.2.0", features = ["base64", "hex"] }
+strum = { version = "0.24.1", optional = true, features = ["derive"] }
 thiserror = "1.0.38"
 tokio = { version = "1.23.0", features = ["rt-multi-thread", "parking_lot"] }
+toml = { version = "0.7.3", optional = true }
 tracing = "0.1.37"
 tracing-loki = { version = "0.2.1" }
 tracing-subscriber = { version = "0.3.16", features = ["fmt", "env-filter", "tracing-log"] }
 url = "2.3.1"
 uuid = "1.2.2"
+
+[dependencies.hub-core-schemas]
+package = "holaplex-hub-core-schemas"
+path = "../core-schemas"
