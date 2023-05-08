@@ -15,6 +15,7 @@ categories = ["cryptography::cryptocurrencies", "web-programming"]
 credits = ["kafka_internal", "rand", "strum", "toml"]
 kafka = ["kafka_internal"]
 kafka_internal = ["rdkafka"]
+asset_proxy = ["strum", "cid"]
 
 [dependencies]
 anyhow = "1.0.66"
@@ -42,6 +43,7 @@ tracing-loki = { version = "0.2.1" }
 tracing-subscriber = { version = "0.3.16", features = ["fmt", "env-filter", "tracing-log"] }
 url = "2.3.1"
 uuid = "1.2.2"
+cid = { version = "0.10.1", optional = true }
 
 [dependencies.hub-core-schemas]
 package = "holaplex-hub-core-schemas"
