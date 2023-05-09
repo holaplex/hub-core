@@ -39,7 +39,7 @@ impl AssetProxy {
         Ok(Self { assets_cdn })
     }
 
-    pub fn proxy_ipfs_image(&mut self, url: &Url, size: Option<ImageSize>) -> Result<Option<Url>> {
+    pub fn proxy_ipfs_image(self, url: &Url, size: Option<ImageSize>) -> Result<Option<Url>> {
         let mut res = Ok(None);
 
         visit_url(url, |s, i| {
@@ -55,7 +55,7 @@ impl AssetProxy {
         });
 
         if let Ok(Some((cid, path))) = res.as_ref() {
-            let proxy_url = &mut self.assets_cdn;
+            let mut proxy_url = self.assets_cdn;
             proxy_url
                 .path_segments_mut()
                 .map_err(|_| anyhow!("invalid url"))?
