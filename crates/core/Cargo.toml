@@ -12,6 +12,7 @@ keywords = ["solana", "holaplex", "web3"]
 categories = ["cryptography::cryptocurrencies", "web-programming"]
 
 [features]
+asset_proxy = ["strum", "cid"]
 credits = ["kafka_internal", "rand", "strum", "toml"]
 kafka = ["kafka_internal"]
 kafka_internal = ["rdkafka"]
@@ -20,6 +21,7 @@ kafka_internal = ["rdkafka"]
 anyhow = "1.0.66"
 async-trait = "0.1.60"
 chrono = "0.4.23"
+cid = { version = "0.10.1", optional = true }
 clap = { version = "4.0.29", features = ["env", "derive", "cargo"] }
 dotenv = "0.15.0"
 futures-util = "0.3.25"

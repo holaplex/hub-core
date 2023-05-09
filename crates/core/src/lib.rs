@@ -59,6 +59,8 @@ pub mod prelude {
     pub type Result<T, E = Error> = std::result::Result<T, E>;
 }
 
+#[cfg(feature = "asset_proxy")]
+pub mod assets;
 #[cfg(feature = "kafka")]
 pub mod consumer;
 #[cfg(feature = "credits")]
@@ -108,6 +110,10 @@ mod runtime {
         #[arg(long, env)]
         credit_sheet: PathBuf,
 
+        #[cfg(feature = "asset_proxy")]
+        #[arg(long, env)]
+        asset_cdn: String,
+
         #[command(flatten)]
         extra: T,
     }
@@ -127,6 +133,9 @@ mod runtime {
 
         #[cfg(feature = "credits")]
         pub credits_cfg: super::credits::Config,
+
+        #[cfg(feature = "asset_proxy")]
+        pub asset_proxy: super::assets::AssetProxy,
     }
 
     impl Common {
@@ -149,6 +158,8 @@ mod runtime {
                 kafka_ssl,
                 #[cfg(feature = "credits")]
                 credit_sheet,
+                #[cfg(feature = "asset_proxy")]
+                asset_cdn,
                 extra,
             } = args;
 
@@ -241,6 +252,9 @@ mod runtime {
                 }
             }
 
+            #[cfg(feature = "asset_proxy")]
+            let asset_proxy = super::assets::AssetProxy::new(&asset_cdn)?;
+
             Ok((
                 Self {
                     rt,
@@ -250,6 +264,8 @@ mod runtime {
                     consumer_cfg,
                     #[cfg(feature = "credits")]
                     credits_cfg,
+                    #[cfg(feature = "asset_proxy")]
+                    asset_proxy,
                 },
                 extra,
             ))
