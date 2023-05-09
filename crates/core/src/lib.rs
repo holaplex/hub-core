@@ -112,7 +112,7 @@ mod runtime {
 
         #[cfg(feature = "asset_proxy")]
         #[arg(long, env)]
-        assets_cdn: String,
+        asset_cdn: String,
 
         #[command(flatten)]
         extra: T,
@@ -159,7 +159,7 @@ mod runtime {
                 #[cfg(feature = "credits")]
                 credit_sheet,
                 #[cfg(feature = "asset_proxy")]
-                assets_cdn,
+                asset_cdn,
                 extra,
             } = args;
 
@@ -253,7 +253,7 @@ mod runtime {
             }
 
             #[cfg(feature = "asset_proxy")]
-            let asset_proxy = super::assets::AssetProxy::new(&assets_cdn)?;
+            let asset_proxy = super::assets::AssetProxy::new(&asset_cdn)?;
 
             Ok((
                 Self {

@@ -12,15 +12,16 @@ keywords = ["solana", "holaplex", "web3"]
 categories = ["cryptography::cryptocurrencies", "web-programming"]
 
 [features]
+asset_proxy = ["strum", "cid"]
 credits = ["kafka_internal", "rand", "strum", "toml"]
 kafka = ["kafka_internal"]
 kafka_internal = ["rdkafka"]
-asset_proxy = ["strum", "cid"]
 
 [dependencies]
 anyhow = "1.0.66"
 async-trait = "0.1.60"
 chrono = "0.4.23"
+cid = { version = "0.10.1", optional = true }
 clap = { version = "4.0.29", features = ["env", "derive", "cargo"] }
 dotenv = "0.15.0"
 futures-util = "0.3.25"
@@ -43,7 +44,6 @@ tracing-loki = { version = "0.2.1" }
 tracing-subscriber = { version = "0.3.16", features = ["fmt", "env-filter", "tracing-log"] }
 url = "2.3.1"
 uuid = "1.2.2"
-cid = { version = "0.10.1", optional = true }
 
 [dependencies.hub-core-schemas]
 package = "holaplex-hub-core-schemas"
