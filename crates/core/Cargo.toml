@@ -22,7 +22,7 @@ anyhow = "1.0.66"
 async-trait = "0.1.60"
 chrono = "0.4.23"
 cid = { version = "0.10.1", optional = true }
-clap = { version = "4.0.29", features = ["env", "derive", "cargo"] }
+clap = { version = "4.2.7", features = ["env", "derive", "cargo"] }
 dotenv = "0.15.0"
 futures-util = "0.3.25"
 hostname = "0.3.1"
