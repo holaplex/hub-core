@@ -2,5 +2,5 @@
 endpoint = "https://schemas.holaplex.tools/"
 
 [schemas]
-credits = 2
+credits = 4
 credits_mpsc = 2
