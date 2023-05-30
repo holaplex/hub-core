@@ -3,7 +3,7 @@ use std::fmt;
 use crate::{prelude::*, util::DebugShim};
 
 /// Service startup configuration for producing Kafka records
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub(crate) topic: String,
     pub(crate) config: DebugShim<rdkafka::ClientConfig>,
