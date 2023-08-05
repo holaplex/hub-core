@@ -48,7 +48,7 @@ struct Core<I, R> {
 }
 
 /// The type of the underlying map between actions and credit costs
-pub type CreditSheet<I> = HashMap<(I, Blockchain), u64>;
+pub type CreditSheet<I> = HashMap<(I, Blockchain), Option<u64>>;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::AsRefStr, strum::Display,
@@ -113,7 +113,7 @@ impl<I: LineItem> CreditsClient<I> {
         let mut s = String::new();
         file.read_to_string(&mut s)
             .context("Error reading credit sheet file")?;
-        let toml: HashMap<String, HashMap<String, u64>> =
+        let toml: HashMap<String, HashMap<String, Option<u64>>> =
             toml::from_str(&s).context("Syntax error in credit sheet")?;
 
         for item in I::iter() {
@@ -166,6 +166,7 @@ impl<I: LineItem> CreditsClient<I> {
         self.core
             .credit_sheet
             .get(key)
+            .and_then(Option::as_ref)
             .ok_or_else(|| anyhow!("No price in credit sheet found for key {key:?}"))
             .copied()
     }
