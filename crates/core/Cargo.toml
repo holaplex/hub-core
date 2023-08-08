@@ -1,6 +1,6 @@
 [package]
 name = "holaplex-hub-core"
-version = "0.4.1"
+version = "0.5.0"
 authors = [
   "Holaplex <engineering@holaplex.com>",
 ]
@@ -21,6 +21,7 @@ kafka_internal = ["rdkafka"]
 [dependencies]
 anyhow = "1.0.66"
 async-trait = "0.1.60"
+backon = "0.4.1"
 chrono = "0.4.23"
 cid = { version = "0.10.1", optional = true }
 clap = { version = "4.2.7", features = ["env", "derive", "cargo"] }
@@ -38,7 +39,7 @@ serde_json = "1.0.91"
 serde_with = { version = "2.2.0", features = ["base64", "hex"] }
 strum = { version = "0.24.1", optional = true, features = ["derive"] }
 thiserror = "1.0.38"
-tokio = { version = "1.23.0", features = ["rt-multi-thread", "parking_lot"] }
+tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "parking_lot"] }
 toml = { version = "0.7.3", optional = true }
 tracing = "0.1.37"
 tracing-loki = { version = "0.2.1" }

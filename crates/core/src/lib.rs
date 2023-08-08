@@ -13,6 +13,7 @@
 
 pub extern crate anyhow;
 pub extern crate async_trait;
+pub extern crate backon;
 pub extern crate chrono;
 pub extern crate clap;
 pub extern crate futures_util;
@@ -43,6 +44,7 @@ pub mod prelude {
         mem,
         str::FromStr,
         sync::Arc,
+        time::Duration,
     };
 
     pub use anyhow::{anyhow, bail, ensure, Context as _, Error};
@@ -68,6 +70,7 @@ pub mod consumer;
 pub mod credits;
 #[cfg(feature = "kafka_internal")]
 pub mod producer;
+pub mod triage;
 pub mod util;
 
 mod runtime {

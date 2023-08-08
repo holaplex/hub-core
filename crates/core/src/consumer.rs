@@ -1,12 +1,17 @@
 //! A Kafka record consumer
 
-use std::fmt;
+use std::{error::Error, fmt};
 
+use backon::{BackoffBuilder, ExponentialBuilder};
 use futures_util::Stream;
 use rdkafka::consumer::{Consumer as _, StreamConsumer};
 pub use rdkafka::Message;
 
-use crate::{prelude::*, util::DebugShim};
+use crate::{
+    prelude::*,
+    triage::{Severity, Triage},
+    util::DebugShim,
+};
 
 /// Service startup configuration for consuming Kafka records
 #[derive(Debug)]
@@ -59,12 +64,143 @@ impl<G: MessageGroup> Consumer<G> {
         })
     }
 
-    /// Open a stream to receive messages from this consumer
+    #[doc(hidden)]
     #[must_use]
+    #[deprecated = "Use the consume() method instead"]
     pub fn stream(&self) -> ConsumerStream<G> {
+        unsafe { self.to_stream() }
+    }
+
+    /// Open a stream to receive messages from this consumer
+    ///
+    /// # Safety
+    /// When consuming items directly from the stream, care must be taken to
+    /// ensure errors are handled properly
+    #[must_use]
+    #[inline]
+    pub unsafe fn to_stream(&self) -> ConsumerStream<G> {
         ConsumerStream {
             stream: self.consumer.0.stream(),
             group: PhantomData::default(),
+        }
+    }
+
+    /// Acquire a stream of incoming events and pass them to the given closure
+    ///
+    /// # Panics
+    /// This method will immediately abort the process if the message
+    /// stream returns too many errors, if handling an event results in a
+    /// fatal error, or if a handler task panics.
+    // TODO: use the never ! type here
+    pub async fn consume<
+        B: FnOnce(ExponentialBuilder) -> ExponentialBuilder,
+        H: Fn(G) -> F + Clone + Send + 'static,
+        F: Future<Output = Result<(), E>> + Send + 'static,
+        E: Error + Send + Sync + Triage + 'static,
+    >(
+        &self,
+        handler_backoff: B,
+        handle: H,
+    ) -> std::convert::Infallible
+    where
+        G: Clone + Send + 'static,
+    {
+        let handler_backoff = handler_backoff(ExponentialBuilder::default());
+
+        let backoff_cfg = ExponentialBuilder::default()
+            .with_jitter()
+            .with_max_times(5);
+        let mut backoff = backoff_cfg.build();
+
+        let abort = || async {
+            error!("Fatal error encountered in consumer loop! Aborting service in 5s...");
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            std::process::abort()
+        };
+
+        let abort_internal = || async {
+            error!("Consumer loop encountered too many errors! Aborting service in 5s...");
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            std::process::abort()
+        };
+
+        // 'reconnect:
+        loop {
+            let mut stream = unsafe { self.to_stream() };
+            let mut tasks = futures_util::stream::FuturesUnordered::new();
+
+            'recv: loop {
+                enum Event<G> {
+                    Event(Option<Result<G, RecvError>>),
+                    Task(Result<(), tokio::task::JoinError>),
+                }
+
+                let evt = tokio::select! {
+                    s = stream.next() => Event::Event(s),
+                    Some(t) = tasks.next() => Event::Task(t),
+                };
+
+                match evt {
+                    Event::Event(Some(Ok(evt))) => {
+                        backoff = backoff_cfg.build();
+                        let handle = handle.clone();
+                        let mut backoff = handler_backoff.build();
+
+                        tasks.push(tokio::spawn(async move {
+                            'retry: loop {
+                                let fut = handle(evt.clone());
+
+                                match fut.await {
+                                    Ok(()) => break 'retry,
+                                    Err(e) => {
+                                        let severity = e.severity();
+                                        let wrapped = anyhow::Error::new(e);
+
+                                        if severity == Severity::User {
+                                            warn!("{:?}", wrapped);
+                                        } else {
+                                            error!("{:?}", wrapped);
+                                        }
+
+                                        match severity {
+                                            Severity::Transient => (),
+                                            Severity::User | Severity::Permanent => break 'retry,
+                                            Severity::Fatal => abort().await,
+                                        }
+                                    },
+                                }
+
+                                let Some(backoff) = backoff.next() else {
+                                    break 'retry;
+                                };
+                                tokio::time::sleep(backoff).await;
+                            }
+                        }));
+                    },
+                    Event::Event(Some(Err(e))) => {
+                        warn!("Error receiving message: {e:?}");
+                        let Some(backoff) = backoff.next() else {
+                            abort_internal().await
+                        };
+                        tokio::time::sleep(backoff).await;
+                    },
+                    Event::Event(None) => break 'recv,
+                    Event::Task(Ok(())) => (),
+                    Event::Task(Err(e)) => {
+                        error!(
+                            "{:?}",
+                            anyhow::Error::new(e).context("Error joining consumer task")
+                        );
+                        abort().await;
+                    },
+                }
+            }
+
+            warn!("Kafka message stream hung up");
+            let Some(backoff) = backoff.next() else {
+                abort_internal().await
+            };
+            tokio::time::sleep(backoff).await;
         }
     }
 }
