@@ -13,6 +13,40 @@ impl producer::Message for credits_mpsc::CreditsMpscEvent {
     type Key = credits::CreditsEventKey;
 }
 
+/// Errors resulting from checking credits or submitting deductions
+#[derive(Debug, thiserror::Error)]
+pub enum DeductionErrorKind {
+    #[error("No price in credit sheet found for the requested action")]
+    MissingItem,
+    #[error("Insufficient available balance {available}, need {cost}")]
+    InsufficientBalance { available: u64, cost: u64 },
+    #[error("Invalid cost")]
+    InvalidCost(std::num::TryFromIntError),
+    #[error("Error sending deduction event")]
+    Send(#[from] producer::SendError),
+}
+
+/// Errors resulting from checking credits or submitting deductions, with
+/// associated line item
+#[derive(Debug, thiserror::Error)]
+#[error("Error processing line item {item} for {blockchain}: {kind}")]
+pub struct DeductionError<I: LineItem> {
+    item: I,
+    blockchain: Blockchain,
+    kind: DeductionErrorKind,
+}
+
+impl<I: LineItem> DeductionError<I> {
+    /// Get the requested line item that caused this error
+    pub fn item(&self) -> I { self.item }
+
+    /// Get the requested blockchain that caused this error
+    pub fn blockchain(&self) -> Blockchain { self.blockchain }
+
+    /// Get the inner kind of this error
+    pub fn kind(&self) -> &DeductionErrorKind { &self.kind }
+}
+
 /// Service startup configuration for charging credits and reading the credit
 /// sheet
 #[derive(Debug)]
@@ -48,7 +82,7 @@ struct Core<I, R> {
 }
 
 /// The type of the underlying map between actions and credit costs
-pub type CreditSheet<I> = HashMap<(I, Blockchain), u64>;
+pub type CreditSheet<I> = HashMap<(I, Blockchain), Option<u64>>;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::AsRefStr, strum::Display,
@@ -80,7 +114,16 @@ impl From<Blockchain> for credits::Blockchain {
 /// Trait alias for an enum describing all actions for which a service may
 /// charge credits
 pub trait LineItem:
-    fmt::Debug + Copy + Eq + std::hash::Hash + AsRef<str> + IntoEnumIterator + Into<Action> + 'static
+    fmt::Debug
+    + Copy
+    + Eq
+    + std::hash::Hash
+    + Send
+    + Sync
+    + AsRef<str>
+    + IntoEnumIterator
+    + Into<Action>
+    + 'static
 {
 }
 
@@ -89,6 +132,8 @@ impl<
         + Copy
         + Eq
         + std::hash::Hash
+        + Send
+        + Sync
         + AsRef<str>
         + IntoEnumIterator
         + Into<Action>
@@ -113,7 +158,7 @@ impl<I: LineItem> CreditsClient<I> {
         let mut s = String::new();
         file.read_to_string(&mut s)
             .context("Error reading credit sheet file")?;
-        let toml: HashMap<String, HashMap<String, u64>> =
+        let toml: HashMap<String, HashMap<String, Option<u64>>> =
             toml::from_str(&s).context("Syntax error in credit sheet")?;
 
         for item in I::iter() {
@@ -159,14 +204,25 @@ impl<I: LineItem> CreditsClient<I> {
     /// # Errors
     /// This method returns an error if no price is found for the given input.
     #[inline]
-    pub fn get_cost<Q: fmt::Debug + Eq + std::hash::Hash + ?Sized>(&self, key: &Q) -> Result<u64>
+    pub fn get_cost<Q: Eq + std::hash::Hash + ?Sized + ToOwned<Owned = (I, Blockchain)>>(
+        &self,
+        key: &Q,
+    ) -> Result<u64, DeductionError<I>>
     where
         (I, Blockchain): Borrow<Q>,
     {
         self.core
             .credit_sheet
             .get(key)
-            .ok_or_else(|| anyhow!("No price in credit sheet found for key {key:?}"))
+            .and_then(Option::as_ref)
+            .ok_or_else(|| {
+                let (item, blockchain) = key.to_owned();
+                DeductionError {
+                    item,
+                    blockchain,
+                    kind: DeductionErrorKind::MissingItem,
+                }
+            })
             .copied()
     }
 
@@ -188,16 +244,27 @@ impl<I: LineItem> CreditsClient<I> {
         item: I,
         blockchain: Blockchain,
         available_balance: u64,
-    ) -> Result<Option<TransactionId>> {
+    ) -> Result<TransactionId, DeductionError<I>> {
+        let err = |kind| DeductionError {
+            item,
+            blockchain,
+            kind,
+        };
+
         let credits = self.get_cost(&(item, blockchain))?;
 
         if available_balance < credits {
-            return Ok(None);
+            return Err(DeductionErrorKind::InsufficientBalance {
+                available: available_balance,
+                cost: credits,
+            })
+            .map_err(err);
         }
 
         let credits = credits
             .try_into()
-            .context("Credit price was too big to transmit")?;
+            .map_err(|e| DeductionErrorKind::InvalidCost(e))
+            .map_err(err)?;
 
         #[allow(clippy::cast_sign_loss)]
         let ts = chrono::Utc::now().timestamp_millis() as u64;
@@ -221,9 +288,10 @@ impl<I: LineItem> CreditsClient<I> {
                 }),
             )
             .await
-            .context("Error sending pending transaction event")?;
+            .map_err(Into::into)
+            .map_err(err)?;
 
-        Ok(Some(TransactionId(txid)))
+        Ok(TransactionId(txid))
     }
 
     /// Submit a confirmation of the transaction with the given ID
@@ -231,7 +299,7 @@ impl<I: LineItem> CreditsClient<I> {
     /// # Errors
     /// This method returns an error if transmitting the confirmation fails.
     #[inline]
-    pub async fn confirm_deduction(&self, id: TransactionId) -> Result<()> {
+    pub async fn confirm_deduction(&self, id: TransactionId) -> Result<(), producer::SendError> {
         self.producer
             .send(
                 Some(&credits_mpsc::CreditsMpscEvent {
@@ -245,6 +313,5 @@ impl<I: LineItem> CreditsClient<I> {
                 }),
             )
             .await
-            .context("Error sending confirm event")
     }
 }
