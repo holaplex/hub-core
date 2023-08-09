@@ -4,6 +4,7 @@
     clippy::disallowed_methods,
     clippy::suspicious,
     clippy::style,
+    clippy::clone_on_ref_ptr,
     missing_debug_implementations,
     missing_copy_implementations
 )]
@@ -55,17 +56,23 @@ impl SchemaSpecConfig {
     }
 }
 
+/// Version and configuration information for a single schema
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct SchemaSpec {
+    /// The version of the schema to retrieve in the registry
     pub version: usize,
+    /// The module path to use when compiling the schema to Go
     pub go_mod: Option<String>,
 }
 
+/// A single entry in the TOML schema configuration
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Schema {
+    /// The subject name of the schema in the registry
     pub subject: String,
+    /// The version and configuration of the schema
     #[serde(flatten)]
     pub spec: SchemaSpec,
 }
@@ -123,9 +130,7 @@ async fn check_schema(
     use tokio::io::AsyncReadExt;
 
     let path = path.as_ref();
-    let Ok(mut file) = tokio::fs::File::open(path)
-        .await
-    else {
+    let Ok(mut file) = tokio::fs::File::open(path).await else {
         return false;
     };
 

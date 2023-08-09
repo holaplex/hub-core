@@ -1,3 +1,5 @@
+//! A client for reading credit prices and submitting deduction events
+
 use std::{collections::HashMap, io::prelude::*, path::PathBuf};
 
 pub use hub_core_schemas::credits::Action;
@@ -16,12 +18,21 @@ impl producer::Message for credits_mpsc::CreditsMpscEvent {
 /// Errors resulting from checking credits or submitting deductions
 #[derive(Debug, thiserror::Error)]
 pub enum DeductionErrorKind {
+    /// Price sheet lookup returned no value
     #[error("No price in credit sheet found for the requested action")]
     MissingItem,
+    /// An available balance check failed
     #[error("Insufficient available balance {available}, need {cost}")]
-    InsufficientBalance { available: u64, cost: u64 },
+    InsufficientBalance {
+        /// The available balance provided
+        available: u64,
+        /// The resolved cost of the action
+        cost: u64,
+    },
+    /// The cost of an item was unable to be converted for transmission
     #[error("Invalid cost")]
     InvalidCost(std::num::TryFromIntError),
+    /// An error occurred while sending the event
     #[error("Error sending deduction event")]
     Send(#[from] producer::SendError),
 }
@@ -29,22 +40,29 @@ pub enum DeductionErrorKind {
 /// Errors resulting from checking credits or submitting deductions, with
 /// associated line item
 #[derive(Debug, thiserror::Error)]
-#[error("Error processing line item {item} for {blockchain}: {kind}")]
+#[error("Error processing line item {item:?} for {blockchain:?}")]
 pub struct DeductionError<I: LineItem> {
     item: I,
     blockchain: Blockchain,
+    #[source]
     kind: DeductionErrorKind,
 }
 
 impl<I: LineItem> DeductionError<I> {
     /// Get the requested line item that caused this error
-    pub fn item(&self) -> I { self.item }
+    pub fn item(&self) -> I {
+        self.item
+    }
 
     /// Get the requested blockchain that caused this error
-    pub fn blockchain(&self) -> Blockchain { self.blockchain }
+    pub fn blockchain(&self) -> Blockchain {
+        self.blockchain
+    }
 
     /// Get the inner kind of this error
-    pub fn kind(&self) -> &DeductionErrorKind { &self.kind }
+    pub fn kind(&self) -> &DeductionErrorKind {
+        &self.kind
+    }
 }
 
 /// Service startup configuration for charging credits and reading the credit
@@ -263,7 +281,7 @@ impl<I: LineItem> CreditsClient<I> {
 
         let credits = credits
             .try_into()
-            .map_err(|e| DeductionErrorKind::InvalidCost(e))
+            .map_err(DeductionErrorKind::InvalidCost)
             .map_err(err)?;
 
         #[allow(clippy::cast_sign_loss)]

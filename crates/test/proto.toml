@@ -1,5 +1,0 @@
-[registry]
-endpoint = "http://localhost:8081/"
-
-[schemas]
-foo = 1
