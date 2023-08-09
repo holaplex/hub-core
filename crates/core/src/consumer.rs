@@ -1,3 +1,5 @@
+//! A Kafka record consumer
+
 use std::fmt;
 
 use futures_util::Stream;

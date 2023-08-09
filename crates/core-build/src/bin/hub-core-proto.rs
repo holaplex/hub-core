@@ -1,7 +1,11 @@
+//! CLI for utilizing [`schema_sync`](hub_core_build::schema_sync) outside of
+//! Rust build scripts.
+
 #![deny(
     clippy::disallowed_methods,
     clippy::suspicious,
     clippy::style,
+    clippy::clone_on_ref_ptr,
     missing_debug_implementations,
     missing_copy_implementations
 )]

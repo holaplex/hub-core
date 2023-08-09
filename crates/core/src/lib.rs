@@ -4,6 +4,7 @@
     clippy::disallowed_methods,
     clippy::suspicious,
     clippy::style,
+    clippy::clone_on_ref_ptr,
     missing_debug_implementations,
     missing_copy_implementations
 )]
@@ -123,18 +124,23 @@ mod runtime {
     #[non_exhaustive]
     #[derive(Debug)]
     pub struct Common {
+        /// A Tokio runtime for use with async tasks
         pub rt: tokio::runtime::Runtime,
 
         #[cfg(feature = "kafka")]
+        /// Configuration for creating a Kafka message producer for this service
         pub producer_cfg: super::producer::Config,
 
         #[cfg(feature = "kafka")]
+        /// Configuration for creating a Kafka message consumer for this service
         pub consumer_cfg: super::consumer::Config,
 
         #[cfg(feature = "credits")]
+        /// Configuration for consuming and producing credit costs
         pub credits_cfg: super::credits::Config,
 
         #[cfg(feature = "asset_proxy")]
+        /// An IPFS asset proxy
         pub asset_proxy: super::assets::AssetProxy,
     }
 
@@ -327,9 +333,12 @@ mod runtime {
             .unwrap_or_else(|e| init_error!("Failed to set tracing subscriber: {e}"));
     }
 
+    /// Initial parameters for booting a service
     #[derive(Debug)]
     #[allow(missing_copy_implementations)]
     pub struct StartConfig {
+        /// The name of this service, used as an identifier in logs and event
+        /// buses
         pub service_name: &'static str,
     }
 

@@ -1,3 +1,5 @@
+//! A client for reading credit prices and submitting deduction events
+
 use std::{collections::HashMap, io::prelude::*, path::PathBuf};
 
 pub use hub_core_schemas::credits::Action;

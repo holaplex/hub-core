@@ -1,3 +1,5 @@
+//! A Kafka record producer
+
 use std::fmt;
 
 use crate::{prelude::*, util::DebugShim};
