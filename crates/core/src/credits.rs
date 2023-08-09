@@ -16,7 +16,7 @@ impl producer::Message for credits_mpsc::CreditsMpscEvent {
 }
 
 /// Errors resulting from checking credits or submitting deductions
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Triage)]
 pub enum DeductionErrorKind {
     /// Price sheet lookup returned no value
     #[error("No price in credit sheet found for the requested action")]
@@ -39,7 +39,7 @@ pub enum DeductionErrorKind {
 
 /// Errors resulting from checking credits or submitting deductions, with
 /// associated line item
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Triage)]
 #[error("Error processing line item {item:?} for {blockchain:?}")]
 pub struct DeductionError<I: LineItem> {
     item: I,

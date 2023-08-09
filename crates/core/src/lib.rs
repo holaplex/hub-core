@@ -14,6 +14,7 @@
 pub extern crate anyhow;
 pub extern crate async_trait;
 pub extern crate backon;
+pub extern crate bs58;
 pub extern crate chrono;
 pub extern crate clap;
 pub extern crate futures_util;
@@ -57,6 +58,8 @@ pub mod prelude {
     };
     pub use tracing_subscriber::prelude::*;
     pub use url::Url;
+
+    pub use crate::triage::{Severity, Triage};
 
     /// Result helper that defaults to [`anyhow::Error`]
     pub type Result<T, E = Error> = std::result::Result<T, E>;

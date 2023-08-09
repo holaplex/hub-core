@@ -94,7 +94,7 @@ impl<G: MessageGroup> Consumer<G> {
     // TODO: use the never ! type here
     pub async fn consume<
         B: FnOnce(ExponentialBuilder) -> ExponentialBuilder,
-        H: Fn(G) -> F + Clone + Send + 'static,
+        H: FnOnce(G) -> F + Clone + Send + 'static,
         F: Future<Output = Result<(), E>> + Send + 'static,
         E: Error + Send + Sync + Triage + 'static,
     >(
@@ -148,23 +148,17 @@ impl<G: MessageGroup> Consumer<G> {
 
                         tasks.push(tokio::spawn(async move {
                             'retry: loop {
-                                let fut = handle(evt.clone());
+                                let fut = handle.clone()(evt.clone());
 
                                 match fut.await {
                                     Ok(()) => break 'retry,
                                     Err(e) => {
                                         let severity = e.severity();
-                                        let wrapped = anyhow::Error::new(e);
-
-                                        if severity == Severity::User {
-                                            warn!("{:?}", wrapped);
-                                        } else {
-                                            error!("{:?}", wrapped);
-                                        }
+                                        error!("{:?}", anyhow::Error::new(e));
 
                                         match severity {
                                             Severity::Transient => (),
-                                            Severity::User | Severity::Permanent => break 'retry,
+                                            Severity::Permanent => break 'retry,
                                             Severity::Fatal => abort().await,
                                         }
                                     },
@@ -233,7 +227,7 @@ impl<'a, G: MessageGroup> Stream for ConsumerStream<'a, G> {
 }
 
 /// An error originating from a received Kafka record
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Triage)]
 pub enum RecvError {
     /// An error occurred reading data from the wire
     #[error("Error receiving messages from Kafka: {0}")]
