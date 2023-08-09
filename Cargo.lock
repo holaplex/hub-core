@@ -720,7 +720,7 @@ dependencies = [
 
 [[package]]
 name = "holaplex-hub-core"
-version = "0.3.2"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -776,16 +776,6 @@ version = "0.3.1"
 dependencies = [
  "holaplex-hub-core-build",
  "prost 0.11.5",
-]
-
-[[package]]
-name = "holaplex-hub-test"
-version = "0.1.0"
-dependencies = [
- "holaplex-hub-core",
- "holaplex-hub-core-build",
- "prost 0.11.5",
- "strum",
 ]
 
 [[package]]

@@ -1,3 +1,5 @@
+//! A proxy for IPFS-hosted assets
+
 use anyhow::Result;
 use cid::Cid;
 use strum;
@@ -28,6 +30,7 @@ pub enum ImageSize {
     Large,
 }
 
+/// Client for proxying IPFS URLs
 #[derive(Debug, Clone)]
 pub struct AssetProxy {
     assets_cdn: Url,
@@ -39,6 +42,11 @@ impl AssetProxy {
         Ok(Self { assets_cdn })
     }
 
+    /// If the provided URL contains an IPFS CID, returns a proxied URL to the
+    /// requested resource using the configured CDN
+    ///
+    /// # Errors
+    /// This method returns an error if the proxy is misconfigured.
     pub fn proxy_ipfs_image(&self, url: &Url, size: Option<ImageSize>) -> Result<Option<Url>> {
         let mut res = Ok(None);
 

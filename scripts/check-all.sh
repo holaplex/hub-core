@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 [[ -z "$CARGO" ]] && CARGO=cargo
 
-"$CARGO" +nightly fmt --all --check
+"$CARGO" fmt --all --check
 
 json="$(cargo metadata --format-version 1 --no-deps)"
 
@@ -14,6 +14,7 @@ lint_pats=(
   clippy :: disallowed_methods ,
   clippy :: suspicious ,
   clippy :: style ,
+  clippy :: clone_on_ref_ptr ,
   missing_debug_implementations ,
   missing_copy_implementations ,
 ) ]'

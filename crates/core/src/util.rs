@@ -1,5 +1,9 @@
+//! Miscellaneous core utilities
+
 use std::fmt;
 
+/// A zero-cost wrapper that implements [`Debug`](fmt::Debug) for values that
+/// have no `Debug` implementation
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct DebugShim<T>(pub T);
