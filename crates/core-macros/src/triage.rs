@@ -8,10 +8,10 @@ pub(super) fn run(input: syn::DeriveInput) -> TokenStream {
 
     let result = match input.data {
         syn::Data::Struct(s) => {
-            try_impl_struct(span, input.attrs, ty, generics, s.fields, &mut diag)
+            try_impl_struct(span, &input.attrs, &ty, &generics, &s.fields, &mut diag)
         },
-        syn::Data::Enum(e) => try_impl_enum(span, ty, generics, e.variants, &mut diag),
-        _ => span
+        syn::Data::Enum(e) => try_impl_enum(span, &ty, &generics, &e.variants, &mut diag),
+        syn::Data::Union(_) => span
             .error("Triage can only be derived on struct or enum types")
             .into_compile_error(),
     };
@@ -21,10 +21,10 @@ pub(super) fn run(input: syn::DeriveInput) -> TokenStream {
 
 fn try_impl_struct(
     span: Span,
-    attrs: Vec<syn::Attribute>,
-    ty: syn::Ident,
-    generics: syn::Generics,
-    fields: syn::Fields,
+    attrs: &[syn::Attribute],
+    ty: &syn::Ident,
+    generics: &syn::Generics,
+    fields: &syn::Fields,
     diag: &mut TokenStream,
 ) -> TokenStream {
     let (fields, severity) = parse_fields(span, attrs, fields, diag);
@@ -34,43 +34,43 @@ fn try_impl_struct(
         #severity
     };
 
-    triage(span, ty, generics, body)
+    triage(span, ty, generics, &body)
 }
 
 fn try_impl_enum(
     span: Span,
-    ty: syn::Ident,
-    generics: syn::Generics,
-    vars: syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+    ty: &syn::Ident,
+    generics: &syn::Generics,
+    vars: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
     diag: &mut TokenStream,
 ) -> TokenStream {
     let vars: Vec<TokenStream> = vars
         .into_iter()
         .map(|v| {
             let span = v.span();
-            let id = v.ident;
+            let id = &v.ident;
 
-            let (fields, severity) = parse_fields(span, v.attrs, v.fields, diag);
+            let (fields, severity) = parse_fields(span, &v.attrs, &v.fields, diag);
             quote_spanned! { span => Self::#id #fields => #severity }
         })
         .collect();
 
     let body = quote_spanned! { span => match *self { #(#vars,)* } };
 
-    triage(span, ty, generics, body)
+    triage(span, ty, generics, &body)
 }
 
 fn parse_fields(
     span: Span,
-    attrs: Vec<syn::Attribute>,
-    fields: syn::Fields,
+    attrs: &[syn::Attribute],
+    fields: &syn::Fields,
     diag: &mut TokenStream,
 ) -> (TokenStream, TokenStream) {
     const TRANSIENT: &str = "Transient";
     const PERMANENT: &str = "Permanent";
     const FATAL: &str = "Fatal";
 
-    let explicit = attrs.into_iter().fold(None, |d, a| {
+    let explicit = attrs.iter().fold(None, |d, a| {
         let span = a.span();
 
         let next = match a
@@ -143,9 +143,9 @@ fn parse_fields(
             let field = field.map(|f| {
                 let id = n
                     .named
-                    .into_iter()
+                    .iter()
                     .nth(f)
-                    .and_then(|f| f.ident)
+                    .and_then(|f| f.ident.as_ref())
                     .unwrap_or_else(|| unreachable!());
 
                 quote_spanned! { span => #id: ref #destructured, }
@@ -156,7 +156,7 @@ fn parse_fields(
         syn::Fields::Unnamed(u) => {
             let span = u.span();
 
-            let fields = u.unnamed.into_iter().enumerate().map(|(i, f)| {
+            let fields = u.unnamed.iter().enumerate().map(|(i, f)| {
                 let span = f.span();
 
                 match field {
@@ -173,7 +173,12 @@ fn parse_fields(
     (fields, severity)
 }
 
-fn triage(span: Span, ty: syn::Ident, generics: syn::Generics, body: TokenStream) -> TokenStream {
+fn triage(
+    span: Span,
+    ty: &syn::Ident,
+    generics: &syn::Generics,
+    body: &TokenStream,
+) -> TokenStream {
     let (impl_gen, ty_gen, where_toks) = generics.split_for_impl();
     quote_spanned! { span =>
         impl #impl_gen Triage for #ty #ty_gen #where_toks {

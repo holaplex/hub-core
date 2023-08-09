@@ -1,3 +1,5 @@
+//! Provides the [`Triage`] trait for getting info about an error's severity.
+
 use std::error::Error;
 
 pub use hub_core_macros::Triage;
