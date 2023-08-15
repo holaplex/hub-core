@@ -102,7 +102,7 @@ impl<M: Message> Producer<M> {
 }
 
 /// An error originating from an outgoing Kafka record
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Triage)]
 #[error("Error sending message to Kafka: {0}")]
 pub struct SendError(#[source] rdkafka::error::KafkaError);
 
