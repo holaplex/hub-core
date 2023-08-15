@@ -2,6 +2,11 @@
 
 use std::fmt;
 
+mod evm_addr;
+
+#[doc(inline)]
+pub use evm_addr::*;
+
 /// A zero-cost wrapper that implements [`Debug`](fmt::Debug) for values that
 /// have no `Debug` implementation
 #[derive(Clone, Copy)]
@@ -20,3 +25,4 @@ impl<T> From<T> for DebugShim<T> {
         Self(val)
     }
 }
+
