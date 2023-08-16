@@ -11,19 +11,20 @@ macro_rules! before_save_evm_addrs {
     (@body $self:ident;) => {};
 
     (@body $self:ident; $ident:ident $(, $($rest:tt)*)?) => {
-        if $self.$ident.as_ref().starts_with("0x") {
-            $self.$ident = ::sea_orm::Set($self.$ident.as_ref().to_lowercase());
+        if let ::sea_orm::ActiveValue::Set(val) = &$self.$ident {
+            if val.starts_with("0x") {
+                $self.$ident = ::sea_orm::Set(val.to_lowercase())
+            }
         }
 
         $crate::before_save_evm_addrs!(@body $self; $($($rest)*)?)
     };
 
     (@body $self:ident; $ident:ident? $(, $($rest:tt)*)?) => {
-        match $self.$ident.as_ref() {
-            Some(s) if s.starts_with("0x") => {
-                $self.$ident = ::sea_orm::Set(Some(s.to_lowercase()))
-            },
-            _ => (),
+        if let ::sea_orm::ActiveValue::Set(Some(val)) = &$self.$ident {
+            if val.starts_with("0x") {
+                $self.$ident = ::sea_orm::Set(val.to_lowercase())
+            }
         }
 
         $crate::before_save_evm_addrs!(@body $self; $($($rest)*)?)
