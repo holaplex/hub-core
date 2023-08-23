@@ -3,9 +3,11 @@
 use std::fmt;
 
 mod evm_addr;
+mod validate_addr;
 
 #[doc(inline)]
 pub use evm_addr::*;
+pub use validate_addr::*;
 
 /// A zero-cost wrapper that implements [`Debug`](fmt::Debug) for values that
 /// have no `Debug` implementation
@@ -25,4 +27,3 @@ impl<T> From<T> for DebugShim<T> {
         Self(val)
     }
 }
-
