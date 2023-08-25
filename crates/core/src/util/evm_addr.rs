@@ -155,9 +155,12 @@ where
 /// Convert any EVM-adddress-like strings in the iterator to lowercase
 ///
 /// An "EVM-address-like" string is any string that begins with the prefix `0x`.
-pub fn downcase_evm_addresses<I: IntoIterator>(it: I) -> impl Iterator<Item = <I::Item as IntoNormalizedAddress>::Output>
+pub fn downcase_evm_addresses<I: IntoIterator>(
+    it: I,
+) -> impl Iterator<Item = <I::Item as IntoNormalizedAddress>::Output>
 where
     I::Item: IntoNormalizedAddress,
 {
-    it.into_iter().map(IntoNormalizedAddress::into_normalized_address)
+    it.into_iter()
+        .map(IntoNormalizedAddress::into_normalized_address)
 }
