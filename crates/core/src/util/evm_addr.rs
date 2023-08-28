@@ -27,10 +27,22 @@ macro_rules! before_save_evm_addrs {
     };
 
     ($($tts:tt)*) => {
-        fn before_save(mut self, _: bool) -> ::std::result::Result<Self, ::sea_orm::DbErr> {
-            $crate::before_save_evm_addrs!(@body self; $($tts)*);
-
-            Ok(self)
+        fn before_save<'a, 'b, C>(
+            mut self,
+            db: &'a C,
+            _: bool,
+        ) -> ::core::pin::Pin<
+            Box<dyn ::std::future::Future<Output = ::std::result::Result<Self, ::sea_orm::DbErr>> + Send + 'b>,
+        >
+        where
+            C: ::sea_orm::ConnectionTrait + 'b,
+            Self: Send + 'b,
+            'a: 'b,
+        {
+            Box::pin(async {
+                $crate::before_save_evm_addrs!(@body self; $($tts)*);
+                Ok(self)
+            })
         }
     };
 }
