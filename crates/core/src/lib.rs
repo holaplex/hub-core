@@ -71,8 +71,11 @@ pub mod assets;
 pub mod consumer;
 #[cfg(feature = "credits")]
 pub mod credits;
+#[cfg(feature = "metrics")]
+pub mod metrics;
 #[cfg(feature = "kafka_internal")]
 pub mod producer;
+
 pub mod triage;
 pub mod util;
 
