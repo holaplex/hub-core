@@ -177,7 +177,6 @@ impl Triage for solana_client::client_error::ClientError {
             | ClientErrorKind::SerdeJson(_)
             | ClientErrorKind::SigningError(_)
             | ClientErrorKind::TransactionError(_)
-            | ClientErrorKind::FaucetError(_)
             | ClientErrorKind::Custom(_) => Severity::Permanent,
         }
     }
