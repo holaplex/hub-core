@@ -130,13 +130,18 @@ impl<M: Message> Producer<M> {
         };
         let parts = parts.unwrap_or_else(|| self.shared.partition_count.load(Ordering::Relaxed));
 
+        let part = rand::thread_rng()
+            .gen_range(0..parts)
+            .try_into()
+            .unwrap_or(0);
+
         match self
             .producer
             .0
             .send(
                 rdkafka::producer::FutureRecord {
                     topic: &self.topic,
-                    partition: Some(rand::thread_rng().gen_range(0..parts).try_into().unwrap_or(0)),
+                    partition: Some(part),
                     payload: payload.map(prost::Message::encode_to_vec).as_deref(),
                     key: key.map(prost::Message::encode_to_vec).as_deref(),
                     timestamp: None,
@@ -166,4 +171,55 @@ pub struct SendError(#[source] rdkafka::error::KafkaError);
 pub trait Message: fmt::Debug + prost::Message {
     /// The key type for this message
     type Key: fmt::Debug + prost::Message;
+}
+
+#[cfg(test)]
+mod tests {
+    #[derive(Debug)]
+    struct Msg;
+
+    impl prost::Message for Msg {
+        fn encode_raw<B>(&self, _: &mut B)
+        where
+            B: prost::bytes::BufMut,
+            Self: Sized,
+        {
+            todo!()
+        }
+
+        fn merge_field<B>(
+            &mut self,
+            _: u32,
+            _: prost::encoding::WireType,
+            _: &mut B,
+            _: prost::encoding::DecodeContext,
+        ) -> Result<(), prost::DecodeError>
+        where
+            B: prost::bytes::Buf,
+            Self: Sized,
+        {
+            todo!()
+        }
+
+        fn encoded_len(&self) -> usize {
+            todo!()
+        }
+
+        fn clear(&mut self) {
+            todo!()
+        }
+    }
+
+    impl super::Message for Msg {
+        type Key = ();
+    }
+
+    fn assert_send(_: impl Send) {}
+
+    #[should_panic]
+    #[allow(unreachable_code)]
+    fn test_send_has_send() {
+        let _p: super::Producer<Msg> = todo!();
+        assert_send(_p.send(None, None));
+    }
 }
