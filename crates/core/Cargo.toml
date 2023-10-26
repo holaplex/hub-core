@@ -1,6 +1,6 @@
 [package]
 name = "holaplex-hub-core"
-version = "0.5.6"
+version = "0.6.0"
 authors = [
   "Holaplex <engineering@holaplex.com>",
 ]
@@ -16,7 +16,7 @@ categories = ["cryptography::cryptocurrencies", "web-programming"]
 asset_proxy = ["strum", "cid"]
 credits = ["kafka_internal", "rand", "strum", "toml"]
 kafka = ["kafka_internal"]
-kafka_internal = ["rdkafka"]
+kafka_internal = ["rand", "rdkafka"]
 solana = ["solana-client", "solana-sdk"]
 metrics = ["opentelemetry",  "opentelemetry_sdk", "opentelemetry-prometheus", "prometheus"]
 
